@@ -1,17 +1,23 @@
-const CACHE_NAME = 'VdR-VZ-v0.1.1';
+const CACHE_NAME = 'VdR-DZ-v0.1.5';
 const urlsToCache = [
   './',
   './index.html',
   './css/style.css',
-  './js/script.js',
-  'https://fonts.googleapis.com/icon?family=Material+Icons'
+  './js/main.js' // Alterado de script.js para main.js, que é o ponto de entrada principal
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
+        // Removido 'https://fonts.googleapis.com/icon?family=Material+Icons' daqui
+        // para evitar erros de CORS ou falhas de rede durante o cache inicial.
+        // O navegador ainda vai carregar a fonte diretamente do HTML.
         return cache.addAll(urlsToCache);
+      })
+      .catch((error) => {
+        console.error('Falha ao adicionar URLs ao cache durante a instalação:', error);
+        // Permite que o Service Worker continue a instalação mesmo se o cache inicial falhar.
       })
   );
 });
