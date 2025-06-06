@@ -4,12 +4,12 @@
 import { auth, db } from './config.js';
 import { signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { loadPlayers, setupFirestorePlayersListener } from '../data/players.js';
-import { showPage, updatePlayerModificationAbility } from '../ui/pages.js';
+import { showPage, updatePlayerModificationAbility, updateProfileMenuLoginState } from '../ui/pages.js'; // NOVO: Importa updateProfileMenuLoginState
 import * as Elements from '../ui/elements.js';
+import { displayMessage } from '../ui/messages.js';
 
 let currentUser = null;
-// Esta flag será usada para diferenciar um login anônimo recém-clicado de uma sessão anônima persistente.
-let isManualAnonymousLogin = false; 
+let isManualAnonymousLogin = false;
 
 const googleLoginProvider = new GoogleAuthProvider();
 
@@ -24,6 +24,19 @@ export async function loginWithGoogle() {
         // O onAuthStateChanged (abaixo) lidará com a navegação para a página inicial após o login.
     } catch (error) {
         console.error("Erro no login com Google:", error);
+        displayMessage("Erro no login com Google. Tente novamente.", "error");
+    }
+}
+
+export async function signInAnonymouslyUser(appId) {
+    isManualAnonymousLogin = true;
+    try {
+        await signInAnonymously(auth);
+        console.log("Login anônimo realizado com sucesso!");
+        // O onAuthStateChanged (abaixo) lidará com a navegação para a página inicial após o login.
+    } catch (error) {
+        console.error("Erro no login anônimo:", error);
+        displayMessage("Erro no login anônimo. Tente novamente.", "error");
     }
 }
 
@@ -31,82 +44,49 @@ export async function logout() {
     try {
         await signOut(auth);
         console.log("Logout realizado com sucesso!");
-        showPage('login-page'); // Volta para a página de login após o logout
+        displayMessage("Você foi desconectado.", "info");
+        // O onAuthStateChanged (abaixo) lidará com a navegação para a página de login.
     } catch (error) {
         console.error("Erro ao fazer logout:", error);
+        displayMessage("Erro ao fazer logout. Tente novamente.", "error");
     }
 }
 
 /**
- * Realiza o login anônimo e navega para a página inicial em caso de sucesso.
- * Esta função é chamada APENAS pelo clique do botão "Entrar sem Logar".
+ * Configura o observador de estado de autenticação do Firebase.
+ * Isso garante que a UI seja atualizada e os dados sejam carregados/sincronizados
+ * sempre que o estado de autenticação mudar.
+ * @param {string} appId - O ID do aplicativo.
  */
-export async function signInAnonymouslyUser() {
-    try {
-        isManualAnonymousLogin = true; // Sinaliza que este é um login anônimo iniciado manualmente
-        const userCredential = await signInAnonymously(auth);
-        console.log("Login anônimo manual realizado com sucesso!");
-
-        // CRÍTICO: Se o onAuthStateChanged não for acionado para uma sessão anônima existente,
-        // garantimos a navegação aqui para o clique manual.
-        if (userCredential.user && userCredential.user.isAnonymous && auth.currentUser) {
-            // Verifica se o usuário atual é o mesmo que acabou de ser autenticado
-            // e se a página atual é a de login para evitar navegação duplicada.
-            if (document.getElementById('login-page').classList.contains('app-page--active')) {
-                 showPage('start-page');
-            }
-        }
-
-    } catch (error) {
-        console.error("Erro no login anônimo manual:", error);
-        // Se o login anônimo falhar, garante que a página de login seja exibida.
-        showPage('login-page');
-    } finally {
-        // Resetar a flag após a tentativa de login.
-        // Um pequeno delay para garantir que o onAuthStateChanged tenha processado, se acionado.
-        setTimeout(() => {
-            isManualAnonymousLogin = false;
-        }, 100); 
-    }
-}
-
 export function setupAuthListener(appId) {
     onAuthStateChanged(auth, async (user) => {
-        currentUser = user;
+        currentUser = user; // Atualiza a referência global do usuário
+
+        // Atualiza o estado do menu de perfil (login/logout)
+        updateProfileMenuLoginState(user);
+
         if (user) {
-            Elements.userIdDisplay.textContent = `ID: ${user.uid}`;
-            console.log(`Usuário autenticado: ${user.uid}`);
+            // Usuário autenticado (anônimo ou Google)
+            if (Elements.userIdDisplay()) Elements.userIdDisplay().textContent = `ID: ${user.uid}`;
+            if (Elements.userProfilePicture()) Elements.userProfilePicture().src = user.photoURL || "https://placehold.co/40x40/222/FFF?text=?";
+            if (Elements.userDisplayName()) Elements.userDisplayName().textContent = user.displayName || (user.isAnonymous ? "Usuário Anônimo" : "Usuário Google");
 
-            // Carrega os jogadores antes de navegar, mas sem renderizar (renderização só na players-page)
-            await loadPlayers(appId, user.uid);
-
-            if (user.isAnonymous) {
-                // Se é um login anônimo manual (acabou de clicar no botão)
-                if (isManualAnonymousLogin) {
-                    console.log("Usuário anônimo (login manual). Navegando para a página inicial.");
-                    updatePlayerModificationAbility(true); // Anônimos podem modificar
-                    showPage('start-page');
-                } else {
-                    // É uma sessão anônima existente de um carregamento anterior, mostra a tela de login
-                    console.log("Usuário anônimo (sessão existente). Mantendo na página de login.");
-                    updatePlayerModificationAbility(true); // Anônimos podem modificar
-                    showPage('login-page');
-                }
-            } else {
-                // Usuário logado via Google (não anônimo), sempre navega para a página inicial
-                console.log(`Usuário não anônimo (Google). Carregando jogadores para ${user.uid}...`);
-                setupFirestorePlayersListener(appId, user.uid);
-                updatePlayerModificationAbility(false); // Google não pode modificar
-                showPage('start-page');
-            }
+            // Configura o listener do Firestore APENAS QUANDO O USUÁRIO ESTÁ AUTENTICADO
+            // Isso garante que o 'db' e o 'user.uid' estão disponíveis.
+            console.log(`Usuário autenticado (${user.isAnonymous ? 'Anônimo' : 'Google'}). Configurando listener do Firestore.`);
+            setupFirestorePlayersListener(appId); // MOVIDO PARA AQUI
+            updatePlayerModificationAbility(true); // AGORA: Qualquer usuário autenticado pode modificar
+            showPage('start-page'); // Mostra a página inicial após o login
         } else {
             // Nenhum usuário autenticado (nem mesmo anônimo automático de sessão anterior)
             console.log("Nenhum usuário autenticado. Exibindo página de login.");
-            Elements.userIdDisplay.textContent = 'ID: Anônimo'; // Exibe status anônimo na sidebar
-            updatePlayerModificationAbility(true); // Permite modificação enquanto não há login confirmado
-            showPage('login-page'); // Garante que a página de login seja exibida
+            if (Elements.userIdDisplay()) Elements.userIdDisplay().textContent = 'ID: Anônimo';
+            if (Elements.userProfilePicture()) Elements.userProfilePicture().src = "https://placehold.co/40x40/222/FFF?text=?"; // Placeholder
+            if (Elements.userDisplayName()) Elements.userDisplayName().textContent = "Usuário Anônimo";
+            updatePlayerModificationAbility(false); // AGORA: Ninguém logado não pode modificar
+            showPage('login-page'); // Mostra a página de login
+            // Quando não há usuário, desinscreve o listener do Firestore para evitar erros.
+            setupFirestorePlayersListener(null); // Passa null para desinscrever o listener
         }
-        // A flag isManualAnonymousLogin será resetada no bloco finally de signInAnonymouslyUser
-        // ou após um pequeno delay se onAuthStateChanged for acionado.
     });
 }
