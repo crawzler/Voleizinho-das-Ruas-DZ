@@ -4,17 +4,23 @@
 import * as Elements from './elements.js';
 import { getIsGameInProgress, resetGameForNewMatch, getCurrentTeam1, getCurrentTeam2, getActiveTeam1Name, getActiveTeam2Name, getActiveTeam1Color, getActiveTeam2Color, incrementScore, decrementScore, getAllGeneratedTeams, setCurrentTeam1, setCurrentTeam2, setActiveTeam1Name, setActiveTeam2Name, setActiveTeam1Color, setActiveTeam2Color, getTeam1Score, getTeam2Score } from '../game/logic.js';
 import { updateScoreDisplay, updateTimerDisplay, updateSetTimerDisplay, renderScoringPagePlayers, updateTeamDisplayNamesAndColors, updateNavScoringButton, renderTeams, renderTeamsInModal } from './game-ui.js';
-import { loadConfig, saveConfig } from './config-ui.js'; // CORREÇÃO: Removido '=>' e alterado para 'from'
+import { loadConfig, saveConfig } from './config-ui.js';
 import { renderPlayersList, updatePlayerCount, updateSelectAllToggle } from './players-ui.js';
-import { getCurrentUser, logout, loginWithGoogle } from '../firebase/auth.js'; // NOVO: Importa loginWithGoogle
+import { getCurrentUser, logout, loginWithGoogle } from '../firebase/auth.js';
 import { addPlayer, removePlayer } from '../data/players.js';
 import { displayMessage } from './messages.js';
+// Importa as funções de scheduling-ui.js que serão usadas nos callbacks do modal
+import { cancelGame, deleteGame } from './scheduling-ui.js';
 
 let touchStartY = 0;
 const DRAG_THRESHOLD = 30; // Limite de movimento para diferenciar clique de arrastar
 let hasGameBeenStartedExplicitly = false;
 let currentPageId = 'login-page';
 let selectingTeamPanelId = null;
+
+// Callbacks para o modal de confirmação
+let onConfirmCallback = null;
+let onCancelCallback = null;
 
 
 /**
@@ -54,7 +60,8 @@ export function closeSidebar() {
     }
     // Oculta o overlay
     if (sidebarOverlay) {
-        sidebarOverlay.classList.remove('active');
+        sidebarOverlay.classList.add('hidden'); // Alterado para 'hidden' para melhor UX (não remova do DOM)
+        sidebarOverlay.classList.remove('active'); // Remove a classe 'active' também
     }
 }
 
@@ -62,9 +69,8 @@ export function closeSidebar() {
  * Exibe uma página específica e esconde as outras, com lógica para sobreposição da start-page.
  * @param {string} pageIdToShow - O ID da página a ser exibida.
  */
-export function showPage(pageIdToShow) {
+export async function showPage(pageIdToShow) {
     if (pageIdToShow === 'scoring-page' && !hasGameBeenStartedExplicitly) {
-        // console.warn('Tentativa de acessar a página de pontuação sem iniciar o jogo. Redirecionando para a página inicial.');
         pageIdToShow = 'start-page';
     }
 
@@ -80,11 +86,10 @@ export function showPage(pageIdToShow) {
 
     if (pageIdToShow === 'start-page') {
         Elements.scoringPage().classList.add('app-page--active');
-        // Ao exibir a start-page, oculte os quadros de jogadores
-        renderScoringPagePlayers([], [], false); // Certifica que os jogadores são ocultados
+        renderScoringPagePlayers([], [], false);
     }
 
-    closeSidebar(); // Garante que o sidebar esteja fechado ao mudar de página
+    closeSidebar();
     updateNavScoringButton(getIsGameInProgress(), currentPageId);
 
     if (pageIdToShow === 'players-page') {
@@ -96,7 +101,10 @@ export function showPage(pageIdToShow) {
         renderTeams(getAllGeneratedTeams());
     } else if (pageIdToShow === 'config-page') {
         loadConfig();
-    } else if (pageIdToShow === 'scoring-page') {
+    }
+    // REMOVIDO: Importação assíncrona e chamada de setupSchedulingPage aqui.
+    // Ela será chamada uma única vez no main.js.
+    else if (pageIdToShow === 'scoring-page') {
         updateScoreDisplay(getTeam1Score(), getTeam2Score());
         updateTeamDisplayNamesAndColors(getActiveTeam1Name(), getActiveTeam2Name(), getActiveTeam1Color(), getActiveTeam2Color());
         
@@ -105,7 +113,6 @@ export function showPage(pageIdToShow) {
         const currentTeam1Players = getCurrentTeam1();
         const currentTeam2Players = getCurrentTeam2();
         
-        // Renderiza os jogadores se a configuração permitir E se houver jogadores nos times
         const shouldDisplayPlayers = displayPlayers && (currentTeam1Players.length > 0 || currentTeam2Players.length > 0);
         renderScoringPagePlayers(currentTeam1Players, currentTeam2Players, shouldDisplayPlayers);
     } else if (pageIdToShow === 'start-page') {
@@ -120,8 +127,6 @@ export function showPage(pageIdToShow) {
  * @param {boolean} canModify - True se o usuário pode modificar jogadores, false caso contrário.
  */
 export function updatePlayerModificationAbility(canModify) {
-    // console.log(`[updatePlayerModificationAbility] canModify: ${canModify}`);
-
     const newPlayerNameInput = Elements.newPlayerNameInput();
     const addPlayerButton = Elements.addPlayerButton();
     const removeButtons = document.querySelectorAll('#players-list-container .remove-button');
@@ -164,14 +169,14 @@ export function updateProfileMenuLoginState() {
 
     if (profileLogoutButton) {
         const iconSpan = profileLogoutButton.querySelector('.material-icons');
-        const textSpan = profileLogoutButton; // O texto está diretamente no botão
+        const textSpan = profileLogoutButton;
 
         if (currentUser && currentUser.isAnonymous) {
             if (iconSpan) iconSpan.textContent = 'login';
-            textSpan.innerHTML = `<span class="material-icons">login</span> Logar`; // Atualiza o HTML para incluir o ícone e texto
+            textSpan.innerHTML = `<span class="material-icons">login</span> Logar`;
         } else {
             if (iconSpan) iconSpan.textContent = 'logout';
-            textSpan.innerHTML = `<span class="material-icons">logout</span> Sair`; // Atualiza o HTML para incluir o ícone e texto
+            textSpan.innerHTML = `<span class="material-icons">logout</span> Sair`;
         }
     }
 }
@@ -182,9 +187,9 @@ export function updateProfileMenuLoginState() {
  * @param {Function} startGameHandler - Função para iniciar o jogo.
  * @param {Function} getPlayersHandler - Função para obter os jogadores.
  */
-export function setupSidebar(startGameHandler, getPlayersHandler) { // REMOVIDO: logoutHandler de parâmetros
+export function setupSidebar(startGameHandler, getPlayersHandler) {
     Elements.menuButton().addEventListener('click', (event) => {
-        event.stopPropagation(); // Evita que o clique no botão de menu feche o sidebar imediatamente
+        event.stopPropagation();
         const sidebar = Elements.sidebar();
         const sidebarOverlay = Elements.sidebarOverlay();
 
@@ -192,7 +197,8 @@ export function setupSidebar(startGameHandler, getPlayersHandler) { // REMOVIDO:
             sidebar.classList.add('active');
         }
         if (sidebarOverlay) {
-            sidebarOverlay.classList.add('active');
+            sidebarOverlay.classList.add('active'); // Agora o overlay aparece ao abrir
+            sidebarOverlay.classList.remove('hidden'); // Remove a classe 'hidden' se estiver lá
         }
     });
 
@@ -201,29 +207,20 @@ export function setupSidebar(startGameHandler, getPlayersHandler) { // REMOVIDO:
             const pageId = item.id.replace('nav-', '');
             const targetPageId = pageId + '-page';
 
-            if (targetPageId === 'scoring-page') {
-                if (getIsGameInProgress() && getCurrentPageId() === 'scoring-page') {
-                    resetGameForNewMatch();
-                    showPage('start-page');
-                } else {
-                    showPage(targetPageId);
-                }
-            } else {
-                showPage(targetPageId);
-            }
-            closeSidebar(); // Fecha o sidebar ao mudar de página
+            showPage(targetPageId);
+            closeSidebar();
         });
     });
 
     // Listener para abrir/fechar o mini-menu do perfil
     if (Elements.userProfileHeader()) {
         Elements.userProfileHeader().addEventListener('click', (event) => {
-            event.stopPropagation(); // Evita que o clique no header feche o sidebar imediatamente
+            event.stopPropagation();
             const profileMenu = Elements.profileMenu();
             const userProfileHeader = Elements.userProfileHeader();
             if (profileMenu && userProfileHeader) {
                 profileMenu.classList.toggle('active');
-                userProfileHeader.classList.toggle('active'); // Para rotacionar a seta
+                userProfileHeader.classList.toggle('active');
             }
         });
     }
@@ -233,21 +230,21 @@ export function setupSidebar(startGameHandler, getPlayersHandler) { // REMOVIDO:
         Elements.profileLogoutButton().addEventListener('click', () => {
             const user = getCurrentUser();
             if (user && user.isAnonymous) {
-                loginWithGoogle(); // Se for anônimo, oferece login com Google
+                loginWithGoogle();
             } else {
-                logout(); // Se não for anônimo (ou nenhum usuário), faz logout
+                logout();
             }
-            closeSidebar(); // Fecha o sidebar e o mini-menu
+            closeSidebar();
         });
     }
 
-    // Listener para o botão "Configurações" dentro do mini-menu
-    if (Elements.profileSettingsButton()) {
-        Elements.profileSettingsButton().addEventListener('click', () => {
-            showPage('config-page');
-            closeSidebar(); // Fecha o sidebar e o mini-menu
-        });
-    }
+    // REMOVIDO: Listener para o botão "Configurações" dentro do mini-menu, movido para o sidebar principal
+    // if (Elements.profileSettingsButton()) {
+    //     Elements.profileSettingsButton().addEventListener('click', () => {
+    //         showPage('config-page'); // Navega para a página de configurações
+    //         closeSidebar();
+    //     });
+    // }
 }
 
 
@@ -262,10 +259,8 @@ export function setupPageNavigation(startGameHandler, getPlayersHandler, appId) 
     if (startGameButton) {
         startGameButton.addEventListener('click', () => {
             if (getIsGameInProgress()) {
-                // console.log("Jogo já está em andamento. Redirecionando para placar.");
                 showPage('scoring-page');
             } else {
-                // console.log("Iniciando novo jogo.");
                 startGameHandler();
             }
         });
@@ -334,15 +329,21 @@ export function setupAccordion() {
     Elements.accordionHeaders().forEach(header => {
         header.addEventListener('click', () => {
             const accordionItem = header.parentElement;
-            accordionItem.classList.toggle('active');
             const content = header.nextElementSibling;
-            if (accordionItem.classList.contains('active')) {
-                content.style.maxHeight = content.scrollHeight + 'px';
-            } else {
+            const isActive = accordionItem.classList.contains('active');
+
+            if (isActive) {
+                accordionItem.classList.remove('active');
                 content.style.maxHeight = null;
+            } else {
+                accordionItem.classList.add('active');
+                content.style.maxHeight = content.scrollHeight + 'px';
             }
         });
     });
+
+    // REMOVIDO: Bloco redundante que estava causando o bug do accordion na tela de agendamentos.
+    // O loop acima já lida com todos os cabeçalhos de accordion, incluindo o de "Jogos Passados".
 }
 
 /**
@@ -350,7 +351,6 @@ export function setupAccordion() {
  * @param {string} panelId - O ID do painel de time ('team1' ou 'team2') que acionou o modal.
  */
 export function openTeamSelectionModal(panelId) {
-    // console.log(`[openTeamSelectionModal] Tentando abrir modal para: ${panelId}`);
     if (!Elements.teamSelectionModal()) {
         console.error("Elemento do modal de seleção de time não encontrado.");
         displayMessage("Erro: Modal de seleção de time não encontrado.", "error");
@@ -378,7 +378,6 @@ export function closeTeamSelectionModal() {
  * @param {string} panelId - O ID do painel de time ('team1' ou 'team2') a ser atualizado.
  */
 export function selectTeamFromModal(teamIndex, panelId) {
-    // console.log(`[selectTeamFromModal] Time selecionado: ${teamIndex} para painel: ${panelId}`);
     const allTeams = getAllGeneratedTeams();
     const selectedTeam = allTeams[teamIndex];
     const config = loadConfig();
@@ -392,11 +391,13 @@ export function selectTeamFromModal(teamIndex, panelId) {
 
     const teamNumberForConfig = teamIndex + 1;
 
+    // CORREÇÃO AQUI: Garante que as chaves de configuração sejam construídas corretamente
     const teamConfigNameKey = `customTeam${teamNumberForConfig}Name`;
     const teamConfigColorKey = `customTeam${teamNumberForConfig}Color`;
 
+    // Acessa as configurações usando as chaves corretas
     const teamDisplayName = config[teamConfigNameKey] || selectedTeam.name || `Time ${teamNumberForConfig}`;
-    const teamDisplayColor = config[teamConfigColorKey] || defaultColors[teamIndex] || '#6c757d';
+    const teamDisplayColor = config[teamConfigColorKey] || defaultColors[teamIndex] || '#6c757d'; // Usa teamConfigColorKey aqui
 
     if (panelId === 'team1') {
         setCurrentTeam1(selectedTeam.players);
@@ -409,12 +410,14 @@ export function selectTeamFromModal(teamIndex, panelId) {
     }
 
     updateTeamDisplayNamesAndColors(getActiveTeam1Name(), getActiveTeam2Name(), getActiveTeam1Color(), getActiveTeam2Color());
-    // Condição para exibir jogadores: config.displayPlayers E (time1 ou time2 tem jogadores)
     const shouldDisplayPlayers = (config.displayPlayers ?? true) && (getCurrentTeam1().length > 0 || getCurrentTeam2().length > 0);
     renderScoringPagePlayers(getCurrentTeam1(), getCurrentTeam2(), shouldDisplayPlayers);
+    
+    // Fecha o modal
+    Elements.teamSelectionModal().classList.remove('modal-active');
     displayMessage(`Time ${panelId === 'team1' ? 1 : 2} atualizado para: ${teamDisplayName}`, "success");
-    closeTeamSelectionModal();
 }
+
 
 /**
  * Configura os event listeners para o modal de seleção de time.
@@ -423,16 +426,12 @@ export function setupTeamSelectionModal() {
     if (Elements.closeModalButton()) {
         Elements.closeModalButton().addEventListener('click', closeTeamSelectionModal);
     }
-    // NOVO: Adiciona listener para o novo botão de fechar no canto superior direito
     if (Elements.closeModalButtonTopRight()) {
         Elements.closeModalButtonTopRight().addEventListener('click', closeTeamSelectionModal);
     }
 
-    // NOVO: Adiciona listener para fechar o modal ao clicar fora
     if (Elements.teamSelectionModal()) {
         Elements.teamSelectionModal().addEventListener('click', (event) => {
-            // Verifica se o clique foi diretamente no contêiner do modal (o overlay)
-            // e não em um de seus filhos (o conteúdo real do modal)
             if (event.target === Elements.teamSelectionModal()) {
                 closeTeamSelectionModal();
             }
@@ -444,11 +443,6 @@ export function setupTeamSelectionModal() {
  * Função para configurar as interações de clique e arrastar na página de pontuação.
  */
 export function setupScoreInteractions() {
-    // console.log('[setupScoreInteractions] Configurando interações de placar e modal.');
-
-    // Listeners para os painéis de pontuação (para pontuar)
-    // ATENÇÃO: Os cliques diretos nos painéis (team1-panel, team2-panel)
-    // são para INCREMENTAR o placar.
     if (Elements.team1Panel()) {
         Elements.team1Panel().addEventListener('touchstart', (event) => handleScoreTouch(event, 'team1'));
         Elements.team1Panel().addEventListener('touchend', (event) => handleScoreTouch(event, 'team1'));
@@ -458,24 +452,17 @@ export function setupScoreInteractions() {
         Elements.team2Panel().addEventListener('touchend', (event) => handleScoreTouch(event, 'team2'));
     }
 
-    // Listeners para os nomes dos times (para ABRIR o modal de seleção)
-    // E para as colunas de jogadores.
     const team1NameDisplay = Elements.team1NameDisplay();
     const team2NameDisplay = Elements.team2NameDisplay();
     const team1PlayersColumn = Elements.team1PlayersColumn();
     const team2PlayersColumn = Elements.team2PlayersColumn();
 
-    // Função auxiliar para adicionar listeners aos elementos de abertura do modal
     const addModalOpenListeners = (element, teamId) => {
         if (element) {
-            // console.log(`[addModalOpenListeners] Elemento encontrado para ${teamId}:`, element.id);
             element.addEventListener('click', (event) => {
-                // console.log(`[setupScoreInteractions] Clique em ${teamId} - Elemento:`, event.target);
-                event.stopPropagation(); // Impede que o clique seja propagado para o painel de pontuação e incremente o placar
+                event.stopPropagation();
                 openTeamSelectionModal(teamId);
             });
-        } else {
-            // console.warn(`[addModalOpenListeners] Elemento para ${teamId} não encontrado.`);
         }
     };
 
@@ -486,7 +473,6 @@ export function setupScoreInteractions() {
 }
 
 function handleScoreTouch(event, teamId) {
-    // console.log(`[handleScoreTouch] Evento de toque (${event.type}) no ${teamId}. Target:`, event.target);
     if (event.type === 'touchstart') {
         touchStartY = event.touches[0].clientY;
         return;
@@ -497,22 +483,82 @@ function handleScoreTouch(event, teamId) {
         const deltaY = touchEndY - touchStartY;
 
         const targetElement = event.target;
-        // Verifica se o toque foi em um dos elementos que abrem o modal de seleção
         if (targetElement.closest('.team-name') || targetElement.closest('.team-players-column')) {
-            // console.log(`[handleScoreTouch] Toque no ${teamId} foi em elemento de seleção de time. Abortando incremento/decremento.`);
             return; 
         }
 
         if (Math.abs(deltaY) > DRAG_THRESHOLD) {
-            // console.log(`[handleScoreTouch] Toque no ${teamId} foi interpretado como arrasto (deltaY: ${deltaY}).`);
             if (deltaY > 0) {
                 decrementScore(teamId);
             } else {
                 incrementScore(teamId);
             }
         } else {
-            // console.log(`[handleScoreTouch] Toque no ${teamId} foi interpretado como clique. Incrementando placar.`);
             incrementScore(teamId);
         }
     }
+}
+
+
+/**
+ * Exibe um modal de confirmação personalizado.
+ * @param {string} message - A mensagem a ser exibida no modal.
+ * @param {Function} onConfirm - Callback a ser executado se o usuário confirmar.
+ * @param {Function} onCancel - Callback a ser executado se o usuário cancelar (opcional).
+ */
+export function showConfirmationModal(message, onConfirm, onCancel = null) {
+    const modal = Elements.confirmationModal();
+    const msgElement = Elements.confirmationMessage();
+    const yesButton = Elements.confirmYesButton();
+    const noButton = Elements.confirmNoButton();
+
+    if (!modal || !msgElement || !yesButton || !noButton) {
+        console.error("Elementos do modal de confirmação não encontrados.");
+        return;
+    }
+
+    msgElement.textContent = message;
+    onConfirmCallback = onConfirm;
+    onCancelCallback = onCancel;
+
+    yesButton.onclick = null;
+    noButton.onclick = null;
+
+    yesButton.addEventListener('click', handleConfirmClick);
+    noButton.addEventListener('click', handleCancelClick);
+
+    modal.classList.add('active');
+}
+
+/**
+ * Esconde o modal de confirmação.
+ */
+export function hideConfirmationModal() {
+    const modal = Elements.confirmationModal();
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+function handleConfirmClick() {
+    if (onConfirmCallback) {
+        try {
+            onConfirmCallback();
+        } catch (error) { // CORRIGIDO: 'catches' para 'catch'
+            console.error('Erro ao executar a ação confirmada:', error);
+            displayMessage('Erro ao executar a ação confirmada.', 'error');
+        }
+    }
+    hideConfirmationModal(); // MOVIDO: Agora o modal é escondido DEPOIS da execução do callback.
+    onConfirmCallback = null; // Resetar APÓS uso
+    onCancelCallback = null;
+}
+
+function handleCancelClick() {
+    hideConfirmationModal();
+    if (onCancelCallback) {
+        onCancelCallback();
+    }
+    onConfirmCallback = null; // Resetar APÓS uso
+    onCancelCallback = null;
 }

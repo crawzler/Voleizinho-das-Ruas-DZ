@@ -1,14 +1,17 @@
 // js/firebase/auth.js
 // Contém a lógica de autenticação do Firebase (login, logout, observador de estado).
 
-import { auth, db } from './config.js';
-import { signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { loadPlayers, setupFirestorePlayersListener } from '../data/players.js';
-import { showPage, updatePlayerModificationAbility, updateProfileMenuLoginState } from '../ui/pages.js'; // NOVO: Importa updateProfileMenuLoginState
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { setupFirestorePlayersListener } from '../data/players.js';
+import { getPlayers } from '../data/players.js';
+import { showPage, updatePlayerModificationAbility } from '../ui/pages.js';
 import * as Elements from '../ui/elements.js';
 import { displayMessage } from '../ui/messages.js';
+import { updateConnectionIndicator, hideLoadingOverlay } from '../main.js'; // Importa hideLoadingOverlay
 
 let currentUser = null;
+let currentAuthInstance = null;
+let currentDbInstance = null;
 let isManualAnonymousLogin = false;
 
 const googleLoginProvider = new GoogleAuthProvider();
@@ -18,75 +21,145 @@ export function getCurrentUser() {
 }
 
 export async function loginWithGoogle() {
+    if (!currentAuthInstance) {
+        console.error("Authentication instance not available for Google login.");
+        displayMessage("Login error: Authentication not initialized.", "error");
+        return;
+    }
+    if (!navigator.onLine) {
+        displayMessage("You are offline. Connect to the internet to log in with Google.", "error");
+        return;
+    }
     try {
-        await signInWithPopup(auth, googleLoginProvider);
-        console.log("Login com Google realizado com sucesso!");
-        // O onAuthStateChanged (abaixo) lidará com a navegação para a página inicial após o login.
+        await signInWithPopup(currentAuthInstance, googleLoginProvider);
+        console.log("Google login successful!");
     } catch (error) {
-        console.error("Erro no login com Google:", error);
-        displayMessage("Erro no login com Google. Tente novamente.", "error");
+        console.error("Error during Google login:", error);
+        displayMessage("Error during Google login. Please try again.", "error");
     }
 }
 
 export async function signInAnonymouslyUser(appId) {
+    if (!currentAuthInstance) {
+        console.error("Authentication instance not available for anonymous login.");
+        displayMessage("Login error: Authentication not initialized.", "error");
+        return;
+    }
+    if (!navigator.onLine) {
+        displayMessage("You are offline. Connect to the internet to start an anonymous session.", "error");
+        return;
+    }
     isManualAnonymousLogin = true;
     try {
-        await signInAnonymously(auth);
-        console.log("Login anônimo realizado com sucesso!");
-        // O onAuthStateChanged (abaixo) lidará com a navegação para a página inicial após o login.
+        await signInAnonymously(currentAuthInstance);
+        console.log("Anonymous login successful!");
     } catch (error) {
-        console.error("Erro no login anônimo:", error);
-        displayMessage("Erro no login anônimo. Tente novamente.", "error");
+        console.error("Error during anonymous login:", error);
+        displayMessage("Error during anonymous login. Please try again.", "error");
     }
 }
 
 export async function logout() {
+    if (!currentAuthInstance) {
+        console.error("Authentication instance not available for logout.");
+        displayMessage("Logout error: Authentication not initialized.", "error");
+        return;
+    }
+    if (!navigator.onLine) {
+        displayMessage("You are offline. Cannot log out now.", "info");
+        return;
+    }
+
     try {
-        await signOut(auth);
-        console.log("Logout realizado com sucesso!");
-        displayMessage("Você foi desconectado.", "info");
-        // O onAuthStateChanged (abaixo) lidará com a navegação para a página de login.
-    } catch (error) {
-        console.error("Erro ao fazer logout:", error);
-        displayMessage("Erro ao fazer logout. Tente novamente.", "error");
+        await signOut(currentAuthInstance);
+        console.log("Logout successful!");
+        displayMessage("You have been disconnected.", "info");
+    }
+    catch (error) {
+        console.error("Error during logout:", error);
+        displayMessage("Error logging out. Please try again.", "error");
     }
 }
 
 /**
- * Configura o observador de estado de autenticação do Firebase.
- * Isso garante que a UI seja atualizada e os dados sejam carregados/sincronizados
- * sempre que o estado de autenticação mudar.
- * @param {string} appId - O ID do aplicativo.
+ * UPDATED: Updates the text, icon, and disabled state of the login/logout button in the profile mini-menu.
+ * This function is now responsible for enabling/disabling the logout button and is declared only once.
  */
-export function setupAuthListener(appId) {
-    onAuthStateChanged(auth, async (user) => {
-        currentUser = user; // Atualiza a referência global do usuário
+export function updateProfileMenuLoginState() {
+    const profileLogoutButton = Elements.profileLogoutButton();
+    const currentUser = getCurrentUser();
+    const isOnline = navigator.onLine;
 
-        // Atualiza o estado do menu de perfil (login/logout)
-        updateProfileMenuLoginState(user);
+    if (profileLogoutButton) {
+        if (currentUser) {
+            profileLogoutButton.innerHTML = `<span class="material-icons">logout</span> Sair`;
+            profileLogoutButton.disabled = !isOnline;
+        } else {
+            profileLogoutButton.innerHTML = `<span class="material-icons">login</span> Logar`;
+            profileLogoutButton.disabled = !isOnline;
+        }
+
+        profileLogoutButton.style.pointerEvents = profileLogoutButton.disabled ? 'none' : 'auto';
+        profileLogoutButton.style.opacity = profileLogoutButton.disabled ? '0.5' : '1';
+    }
+}
+
+
+/**
+ * Sets up the Firebase authentication state observer.
+ * This listener is the central point for reacting to login/logout changes.
+ * @param {object} authInstance - The Firebase Auth instance.
+ * @param {object} dbInstance - The Firebase Firestore instance.
+ * @param {string} appId - The application ID for use in Firestore synchronization.
+ */
+export function setupAuthListener(authInstance, dbInstance, appId) {
+    currentAuthInstance = authInstance;
+    currentDbInstance = dbInstance;
+
+    onAuthStateChanged(currentAuthInstance, async (user) => {
+        console.log(`[onAuthStateChanged] Usuário: ${user ? user.uid : 'NULO'}, Online: ${navigator.onLine}`);
+
+        currentUser = user;
+        updateProfileMenuLoginState();
+
+        // NOVO: Atualiza o indicador de conexão imediatamente com base no status da rede
+        updateConnectionIndicator(navigator.onLine ? 'online' : 'offline');
+        hideLoadingOverlay(); // Oculta a tela de carregamento assim que o estado de autenticação for determinado
 
         if (user) {
-            // Usuário autenticado (anônimo ou Google)
+            console.log(`User logged in: ${user.uid} (Provider: ${user.isAnonymous ? 'Anonymous' : user.providerData[0]?.providerId || 'Google'})`);
             if (Elements.userIdDisplay()) Elements.userIdDisplay().textContent = `ID: ${user.uid}`;
             if (Elements.userProfilePicture()) Elements.userProfilePicture().src = user.photoURL || "https://placehold.co/40x40/222/FFF?text=?";
-            if (Elements.userDisplayName()) Elements.userDisplayName().textContent = user.displayName || (user.isAnonymous ? "Usuário Anônimo" : "Usuário Google");
+            if (Elements.userDisplayName()) Elements.userDisplayName().textContent = user.displayName || (user.isAnonymous ? "Anonymous User" : "Google User");
 
-            // Configura o listener do Firestore APENAS QUANDO O USUÁRIO ESTÁ AUTENTICADO
-            // Isso garante que o 'db' e o 'user.uid' estão disponíveis.
-            console.log(`Usuário autenticado (${user.isAnonymous ? 'Anônimo' : 'Google'}). Configurando listener do Firestore.`);
-            setupFirestorePlayersListener(appId); // MOVIDO PARA AQUI
-            updatePlayerModificationAbility(true); // AGORA: Qualquer usuário autenticado pode modificar
-            showPage('start-page'); // Mostra a página inicial após o login
+            console.log(`Setting up Firestore listener for user: ${user.uid}`);
+            setupFirestorePlayersListener(currentDbInstance, appId);
+            updatePlayerModificationAbility(true);
+            showPage('start-page');
+            
+            if (Elements.googleLoginButton()) Elements.googleLoginButton().disabled = false;
+            if (Elements.anonymousLoginButton()) Elements.anonymousLoginButton().disabled = false;
         } else {
-            // Nenhum usuário autenticado (nem mesmo anônimo automático de sessão anterior)
-            console.log("Nenhum usuário autenticado. Exibindo página de login.");
-            if (Elements.userIdDisplay()) Elements.userIdDisplay().textContent = 'ID: Anônimo';
-            if (Elements.userProfilePicture()) Elements.userProfilePicture().src = "https://placehold.co/40x40/222/FFF?text=?"; // Placeholder
-            if (Elements.userDisplayName()) Elements.userDisplayName().textContent = "Usuário Anônimo";
-            updatePlayerModificationAbility(false); // AGORA: Ninguém logado não pode modificar
-            showPage('login-page'); // Mostra a página de login
-            // Quando não há usuário, desinscreve o listener do Firestore para evitar erros.
-            setupFirestorePlayersListener(null); // Passa null para desinscrever o listener
+            console.log("No user authenticated.");
+            if (Elements.userIdDisplay()) Elements.userIdDisplay().textContent = 'ID: Not logged in';
+            if (Elements.userProfilePicture()) Elements.userProfilePicture().src = "https://placehold.co/40x40/222/FFF?text=?";
+            if (Elements.userDisplayName()) Elements.userDisplayName().textContent = "Visitor";
+            updatePlayerModificationAbility(false);
+            setupFirestorePlayersListener(null, appId);
+
+            if (!navigator.onLine) {
+                console.log("[Auth Listener] Offline e sem usuário logado. Tentando mostrar start-page.");
+                showPage('start-page'); // Direciona para a start-page para permitir acesso aos dados locais
+                displayMessage("Sua sessão expirou devido à falta de conexão, mas você pode continuar usando dados locais. Reconecte para logar novamente.", "info");
+                
+                if (Elements.googleLoginButton()) Elements.googleLoginButton().disabled = true;
+                if (Elements.anonymousLoginButton()) Elements.anonymousLoginButton().disabled = true;
+            } else {
+                console.log("[Auth Listener] Online e sem usuário logado. Mostrando login-page.");
+                showPage('login-page');
+                if (Elements.googleLoginButton()) Elements.googleLoginButton().disabled = false;
+                if (Elements.anonymousLoginButton()) Elements.anonymousLoginButton().disabled = false;
+            }
         }
     });
 }

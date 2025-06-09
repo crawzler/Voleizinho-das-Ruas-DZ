@@ -1,124 +1,236 @@
 // js/main.js
 // Ponto de entrada principal do seu aplicativo. Orquestra a inicialização e os módulos.
 
-import { auth, initFirebaseApp, getAppId } from './firebase/config.js'; // Importa getAppId
-import { loginWithGoogle, logout, setupAuthListener, signInAnonymouslyUser } from './firebase/auth.js';
-import { loadPlayers, setupFirestorePlayersListener, addPlayer, removePlayer } from './data/players.js'; // Importa addPlayer e removePlayer
-import { showPage, updatePlayerModificationAbility, setupSidebar, setupPageNavigation, setupAccordion, setupScoreInteractions, setupTeamSelectionModal, closeSidebar } from './ui/pages.js'; // Importa setupTeamSelectionModal e closeSidebar
-import { setupConfigUI } from './ui/config-ui.js';
-import { startGame, toggleTimer, swapTeams, endGame } from './game/logic.js'; // Adicionado endGame
+import { initFirebaseApp, getAppId } from './firebase/config.js';
+import { loginWithGoogle, logout, setupAuthListener, signInAnonymouslyUser, updateProfileMenuLoginState } from './firebase/auth.js'; // Imports updateProfileMenuLoginState
+import { loadPlayersFromLocalStorage, setupFirestorePlayersListener, addPlayer, removePlayer } from './data/players.js';
+import { showPage, updatePlayerModificationAbility, setupSidebar, setupPageNavigation, setupAccordion, setupScoreInteractions, setupTeamSelectionModal, closeSidebar, showConfirmationModal, hideConfirmationModal } from './ui/pages.js';
+import { setupConfigUI, loadConfig } from './ui/config-ui.js'; // Importa loadConfig
+import { startGame, toggleTimer, swapTeams, endGame } from './game/logic.js';
 import { generateTeams } from './game/teams.js';
 import { loadAppVersion, registerServiceWorker } from './utils/app-info.js';
 import { getPlayers } from './data/players.js';
 import * as Elements from './ui/elements.js';
 import { displayMessage } from './ui/messages.js';
-import { updatePlayerCount, updateSelectAllToggle } from './ui/players-ui.js'; // Importa as funções para a UI de jogadores
+import { updatePlayerCount, updateSelectAllToggle } from './ui/players-ui.js';
+import { setupHistoryPage } from './ui/history-ui.js';
+import { setupSchedulingPage } from './ui/scheduling-ui.js';
+
+import { signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+let authListenerInitialized = false;
+let loadingTimeout = null;
+
+/**
+ * Atualiza o indicador de status de conexão na UI.
+ * @param {'online' | 'offline' | 'reconnecting'} status - O status da conexão.
+ */
+export function updateConnectionIndicator(status) {
+    const indicator = Elements.connectionIndicator();
+    const statusDot = Elements.statusDot();
+    const statusText = Elements.statusText();
+
+    if (!indicator || !statusDot || !statusText) {
+        // console.warn("Elementos do indicador de conexão não encontrados."); // Removido console.warn excessivo
+        return;
+    }
+
+    const config = loadConfig(); // Carrega a configuração mais recente
+
+    if (!config.showConnectionStatus) {
+        indicator.classList.add('hidden-by-config');
+        return;
+    } else {
+        indicator.classList.remove('hidden-by-config');
+    }
+
+    statusDot.className = 'status-dot'; // Resets the classes
+    statusText.textContent = ''; // Resets the text
+
+    switch (status) {
+        case 'online':
+            statusDot.classList.add('online');
+            statusText.textContent = 'Online';
+            break;
+        case 'offline':
+            statusDot.classList.add('offline');
+            statusText.textContent = 'Offline';
+            break;
+        case 'reconnecting':
+            statusDot.classList.add('reconnecting');
+            statusText.textContent = 'Reconectando...';
+            break;
+    }
+}
+
+/**
+ * Hides the loading overlay.
+ */
+export function hideLoadingOverlay() {
+    const loadingOverlay = Elements.loadingOverlay();
+    if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) { // Verifica se já não está oculto
+        loadingOverlay.classList.add('hidden');
+        if (loadingTimeout) {
+            clearTimeout(loadingTimeout);
+            loadingTimeout = null;
+        }
+        console.log("[main.js] Tela de carregamento oculta.");
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Exibe a tela de carregamento imediatamente
+    const loadingOverlay = Elements.loadingOverlay();
+    if (loadingOverlay) {
+        loadingOverlay.classList.remove('hidden'); // Garante que a tela de carregamento esteja visível
+    }
+    console.log("[main.js] DOMContentLoaded. Exibindo tela de carregamento. navigator.onLine:", navigator.onLine);
 
-    
-    // REMOVIDO: Desativa o pull-to-refresh para mobile
-    // let lastTouchY = 0;
-    // window.addEventListener('touchstart', (e) => {
-    //     lastTouchY = e.touches[0].clientY;
-    // });
+    // Inicia o timer para forçar o modo offline após 10 segundos, se necessário
+    loadingTimeout = setTimeout(() => {
+        if (!authListenerInitialized) {
+            console.log("[main.js] Tempo limite de carregamento excedido. Forçando modo offline.");
+            displayMessage("Não foi possível conectar. Modo offline ativado.", "info");
+            showPage('start-page'); // Força a exibição da página inicial
+            updateConnectionIndicator('offline'); // Força o indicador para offline (respeitará a config)
+            hideLoadingOverlay();
+        }
+    }, 10000); // 10 segundos
 
-    // window.addEventListener('touchmove', (e) => {
-    //     const currentTouchY = e.touches[0].clientY;
-    //     // Se a tela está no topo (scrollY === 0) e o usuário está arrastando para baixo
-    //     if (window.scrollY === 0 && currentTouchY > lastTouchY) {
-    //         e.preventDefault();
-    //     }
-    // }, { passive: false }); // 'passive: false' é crucial para que preventDefault funcione
-
-    
-    
-    // Esconde todas as páginas inicialmente para garantir que apenas uma seja exibida
-    Elements.pages().forEach(page => { // Chamada da função Elements.pages()
-        page.classList.remove('app-page--active');
-    });
-
-    // CRÍTICO: Exibe a página de login imediatamente para evitar a "piscada" de conteúdo
-    showPage('login-page');
-
-    // Inicializa o Firebase e obtém o appId
-    await initFirebaseApp();
+    // Initializes the Firebase App and gets instances
+    const { app, db, auth } = await initFirebaseApp();
     const appId = getAppId();
-    console.log("App ID obtido em main.js:", appId);
 
-    // Configura o listener de autenticação do Firebase
-    setupAuthListener(appId);
+    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        try {
+            await signInWithCustomToken(auth, __initial_auth_token);
+            console.log("User logged in with Canvas initial token.");
+        } catch (error) {
+            console.error("Error logging in with Canvas initial token:", error);
+        }
+    }
 
-    // Carrega os jogadores do localStorage e/ou Firestore
-    loadPlayers(appId);
+    // CARREGA JOGADORES DO LOCALSTORAGE ANTES DE CONFIGURAR O LISTENER DE AUTENTICAÇÃO
+    loadPlayersFromLocalStorage();
 
-    // Configura os event listeners da UI
-    // Passa a função logout para setupSidebar
-    setupSidebar(startGame, getPlayers, logout);
-    // Passa o appId para setupPageNavigation, pois é necessário para addPlayer/removePlayer
-    setupPageNavigation(startGame, getPlayers, appId); // Passa startGame e getPlayers como handlers
+    setupAuthListener(auth, db, appId);
+    authListenerInitialized = true; // Marca que o listener de autenticação foi inicializado
+
+    setupSidebar();
+    setupPageNavigation(startGame, getPlayers, appId);
     setupAccordion();
     setupConfigUI();
     setupScoreInteractions();
-    setupTeamSelectionModal(); // Configura o modal de seleção de time
+    setupTeamSelectionModal();
+    setupHistoryPage();
+    setupSchedulingPage(); // Garante que a página de agendamento seja configurada uma vez
 
-
-    // Configura o botão de login com Google
-    if (Elements.googleLoginButton()) { // Chamada da função Elements.googleLoginButton()
-        Elements.googleLoginButton().addEventListener('click', loginWithGoogle);
-    }
-
-    // Configura o botão de login anônimo
-    const anonymousLoginButton = Elements.anonymousLoginButton(); // Chamada da função Elements.anonymousLoginButton()
-    if (anonymousLoginButton) {
-        anonymousLoginButton.addEventListener('click', () => signInAnonymouslyUser(appId)); // Passa appId
-    }
-
-    // Configura o botão de iniciar partida
-    const startGameButton = document.getElementById('start-game-button'); // Este não é do elements.js
-    if (startGameButton) {
-        startGameButton.addEventListener('click', () => startGame(appId));
-    }
-
-    // Configura o botão de gerar times
-    const generateTeamsButton = Elements.generateTeamsButton(); // Chamada da função Elements.generateTeamsButton()
+    // Listeners for team page buttons
+    const generateTeamsButton = document.getElementById('generate-teams-button');
+    // console.log("Element 'generate-teams-button':", generateTeamsButton); // Removido console.log excessivo
     if (generateTeamsButton) {
-        generateTeamsButton.addEventListener('click', () => generateTeams(appId));
-    }
-
-    // Configura o botão de trocar times
-    const swapTeamsButton = document.getElementById('swap-teams-button'); // Este não é do elements.js
-    if (swapTeamsButton) {
-        swapTeamsButton.addEventListener('click', swapTeams);
-    }
-
-    // Configura o botão de toggle do timer
-    if (Elements.timerAndSetTimerWrapper()) { // Chamada da função Elements.timerAndSetTimerWrapper()
-        Elements.timerAndSetTimerWrapper().addEventListener('click', toggleTimer);
-    }
-
-    // Configura o botão de encerrar jogo
-    const endGameButton = document.getElementById('end-game-button'); // Este não é do elements.js
-    if (endGameButton) {
-        endGameButton.addEventListener('click', () => {
-            // Substituído window.confirm por displayMessage para consistência
-            displayMessage("Tem certeza que deseja encerrar o jogo? (Esta mensagem é apenas um placeholder, implemente um modal de confirmação real)", "info", 5000);
-            endGame(); // Chama a função endGame
+        generateTeamsButton.addEventListener('click', () => {
+            console.log("Button 'Generate Teams' clicked.");
+            generateTeams(appId);
         });
     }
 
-    // Carrega a versão do aplicativo
-    loadAppVersion();
+    // Listener for start/stop game button (which now starts the game or toggles the timer)
+    const toggleTimerButton = document.getElementById('toggle-timer-button');
+    // console.log("Element 'toggle-timer-button':", toggleTimerButton); // Removido console.log excessivo
+    if (toggleTimerButton) {
+        toggleTimerButton.addEventListener('click', () => {
+            console.log("Button 'Toggle Timer' clicked.");
+            toggleTimer();
+        });
+    }
 
-    // Registra o Service Worker
+    // Listener for swap teams button
+    const swapTeamsButton = document.getElementById('swap-teams-button');
+    // console.log("Element 'swap-teams-button':", swapTeamsButton); // Removido console.log excessivo
+    if (swapTeamsButton) {
+        swapTeamsButton.addEventListener('click', () => {
+            console.log("Button 'Swap Teams' clicked.");
+            swapTeams();
+        });
+    }
+
+    // Sets up the timer toggle button
+    const timerAndSetTimerWrapperElement = Elements.timerAndSetTimerWrapper();
+    // console.log("Element 'Elements.timerAndSetTimerWrapper()':", timerAndSetTimerWrapperElement); // Removido console.log excessivo
+    if (timerAndSetTimerWrapperElement) {
+        timerAndSetTimerWrapperElement.addEventListener('click', () => {
+            console.log("Timer Wrapper clicked.");
+            toggleTimer();
+        });
+    }
+
+    // Sets up the end game button
+    const endGameButton = document.getElementById('end-game-button');
+    // console.log("Element 'end-game-button':", endGameButton); // Removido console.log excessivo
+    if (endGameButton) {
+        endGameButton.addEventListener('click', () => {
+            console.log("Button 'End Game' clicked.");
+            showConfirmationModal(
+                'Are you sure you want to end the game? The score will be saved to history.',
+                () => {
+                    console.log("Game end confirmation.");
+                    endGame();
+                }
+            );
+        });
+    }
+
+    // FIXED: Adds event listeners for login buttons with correct HTML IDs
+    const googleLoginButton = document.getElementById('google-login-button');
+    // console.log("Element 'google-login-button':", googleLoginButton); // Removido console.log excessivo
+    if (googleLoginButton) {
+        googleLoginButton.addEventListener('click', () => {
+            console.log("Button 'Sign in with Google' clicked.");
+            loginWithGoogle();
+        });
+    }
+
+    const anonymousLoginButton = document.getElementById('anonymous-login-button');
+    // console.log("Element 'anonymous-login-button':", anonymousLoginButton); // Removido console.log excessivo
+    if (anonymousLoginButton) {
+        anonymousLoginButton.addEventListener('click', () => {
+            console.log("Button 'Sign in anonymously' clicked.");
+            signInAnonymouslyUser(appId);
+        });
+    }
+
+    // NOVO: Listener para detectar quando o aplicativo volta a ficar online
+    window.addEventListener('online', () => {
+        console.log("Application online again. Attempting to revalidate session...");
+        displayMessage("Online novamente! Tentando reconectar...", "info");
+        updateConnectionIndicator('reconnecting'); // Define estado "reconectando" imediatamente (respeitará a config)
+        setTimeout(() => { // Pequeno delay antes de confirmar online para visual
+            setupAuthListener(auth, db, appId); // Re-executa o listener para pegar o estado mais recente
+            updateProfileMenuLoginState();
+        }, 1500);
+    });
+
+    // NOVO: Listener para detectar quando o aplicativo fica offline
+    window.addEventListener('offline', () => {
+        console.log("Application offline.");
+        displayMessage("Você está offline.", "error");
+        if (Elements.googleLoginButton()) Elements.googleLoginButton().disabled = true;
+        if (Elements.anonymousLoginButton()) Elements.anonymousLoginButton().disabled = true;
+        updateProfileMenuLoginState();
+        updateConnectionIndicator('offline'); // Define estado offline (respeitará a config)
+    });
+
+    // Define o estado inicial do indicador de conexão com base na configuração
+    updateConnectionIndicator(navigator.onLine ? 'online' : 'offline');
+
+    loadAppVersion();
     registerServiceWorker();
 
-    // NOVO: Adiciona um listener de clique ao overlay para fechar o sidebar
     if (Elements.sidebarOverlay()) {
         Elements.sidebarOverlay().addEventListener('click', () => {
             closeSidebar();
-            console.log('Sidebar fechado por clique no overlay.');
+            console.log('Sidebar closed by clicking on overlay.');
         });
     }
-    // REMOVIDO: O listener de clique global no document.body
 });

@@ -2,14 +2,27 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#252525"/>
     <title>Vôlei Score App</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/history.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="manifest" href="manifest.json">
 </head>
 <body>
+
+    <!-- NOVO: Indicador de Conexão -->
+    <div id="connection-indicator" class="connection-indicator">
+        <span class="status-dot"></span>
+        <span class="status-text"></span>
+    </div>
+
+    <!-- NOVO: Tela de Carregamento (Loading Overlay) -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p>Carregando...</p>
+    </div>
 
     <div class="header-button-container">
         <button id="menu-button" class="header-button">
@@ -27,9 +40,10 @@
             </div>
             <!-- NOVO: Mini-menu do perfil -->
             <div id="profile-menu" class="profile-menu">
-                <button id="profile-settings-button" class="profile-menu-item">
+                <!-- REMOVIDO: Botão de Configurações do mini-menu do perfil -->
+                <!-- <button id="profile-settings-button" class="profile-menu-item">
                     <span class="material-icons">settings</span> Configurações
-                </button>
+                </button> -->
                 <button id="profile-logout-button" class="profile-menu-item">
                     <span class="material-icons">logout</span> Sair
                 </button>
@@ -59,8 +73,8 @@
                 <span class="material-icons sidebar-nav-icon">insights</span> Estatísticas
             </button>
             <!-- REMOVIDO: Botão de Sair -->
-            <!-- Botão de Configurações será acessível no mini-menu do perfil -->
-            <button id="nav-config" class="sidebar-nav-item" style="display:none;">
+            <!-- Botão de Configurações MOVIDO para o sidebar principal -->
+            <button id="nav-config" class="sidebar-nav-item" >
                 <span class="material-icons sidebar-nav-icon">settings</span> Configurações
             </button>
         </nav>
@@ -87,6 +101,10 @@
 
         <!-- Página de Pontuação -->
         <section id="scoring-page" class="app-page scoring-page-layout">
+            <!-- NOVO: Contêineres para as estrelas de sets vencidos -->
+            <div id="team1-stars" class="stars-container">a</div>
+            <div id="team2-stars" class="stars-container">b</div>
+            
             <div class="score-display-container">
 
                 <!-- MODAL DE SELEÇÃO DE TIME -->
@@ -213,16 +231,25 @@
                                     <span class="slider round"></span>
                                 </label>
                             </div>
+                            <!-- NOVO: Toggle para exibir Status de Conexão -->
+                            <div class="form-group form-group--toggle">
+                                <label for="show-connection-status-toggle" class="form-label">Exibir Status de Conexão:</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="show-connection-status-toggle" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
                         </div>
 
                     </div>
                 </div>
 
                 <div class="accordion-item">
-                    <div class="accordion-header">
+                    <!-- CORREÇÃO: Alterado de <div> para <button> para corrigir o bug do accordion -->
+                    <button class="accordion-header">
                         <h3>Times Personalizados</h3>
                         <span class="material-icons">expand_more</span>
-                    </div>
+                    </button>
                     <div class="accordion-content">  
                         <div class="accordion-content-sub-teams">
                             <div>
@@ -270,8 +297,24 @@
                         </div>
                 </div>
             </div>
-            <button id="reset-config-button" class="button button--secondary form-button--full-width">Redefinir Configurações</button>
 
+                <!-- NOVO: Acordeão para Reiniciar Aplicativo -->
+                <div class="accordion-item">
+                    <button class="accordion-header">
+                        <h3>Reiniciar Aplicativo</h3>
+                        <span class="material-icons">expand_more</span>
+                    </button>
+                    <div class="accordion-content">
+                        <div class="accordion-content-sub-full-width"> <!-- Classe para botões em linha única -->
+                            <button id="reset-app-button" class="button button--secondary form-button--full-width">
+                                <span class="material-icons">cleaning_services</span> Limpar Cache e Reiniciar App
+                            </button>
+                            <button id="reset-config-button" class="button button--secondary form-button--full-width mt-4"> <!-- Adicionado mt-4 para espaçamento -->
+                                <span class="material-icons">settings_backup_restore</span> Redefinir Configurações
+                            </button>
+                        </div>
+                    </div>
+                </div>
             
             <div class="app-info">
                 <span id="user-id-display">ID: Carregando...</span>
@@ -282,51 +325,15 @@
         <!-- Página de Histórico -->
         <section id="history-page" class="app-page history-page-layout">
             <h2 class="page-heading">Histórico de Jogos</h2>
-            <h4>Em desenvolvimento...</h4>
-            <!-- Conteúdo do histórico, por exemplo:
-            <div class="history-card">
-                <div class="history-card-header">
-                    <span class="history-date">25/05/2024</span>
-                    <span class="history-score">Time A 21 x 18 Time B</span>
-                </div>
-                <div class="history-players-layout">
-                    <div>
-                        <h4 class="history-players-title">Jogadores Time A:</h4>
-                        <ul class="history-players-list">
-                            <li>- Ana</li>
-                            <li>- Bruno</li>
-                            <li>- Carlos</li>
-                        </ul>
-                    </div>
-                    <div>
-                        <h4 class="history-players-title">Jogadores Time B:</h4>
-                        <ul class="history-players-list">
-                            <li>- Daniela</li>
-                            <li>- Eduardo</li>
-                            <li>- Fernanda</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="history-card-footer">
-                    <div class="history-card-detail">
-                        <span class="material-icons history-detail-icon">place</span>
-                        <span>Local: Quadra da Praça</span>
-                    </div>
-                    <div class="history-card-detail">
-                        <span class="material-icons history-detail-icon">timer</span>
-                        <span>Tempo de jogo: 00:25</span>
-                        <button class="delete-game-button history-delete-button"><span class="material-icons">delete</span></button>
-                    </div>
-                </div>
+            <div id="history-list-container" class="history-list-container">
+                <!-- O histórico de jogos será renderizado aqui pelo history-ui.js -->
             </div>
-            -->
         </section>
 
         <!-- Página de Agendamentos -->
         <section id="scheduling-page" class="app-page scheduling-page-layout">
             <h2 class="page-heading">Agendamentos de Jogos</h2>
-            <h4>Em Desenvolvimento...</h4>
-            <!--
+            
             <div class="scheduling-form-grid">
                 <div class="form-group">
                     <label for="date-input" class="form-label">Data:</label>
@@ -348,16 +355,43 @@
                     <label for="notes-input" class="form-label">Observação</label>
                     <input type="text" id="notes-input" placeholder="Ex: Praia, Ginásio X" class="form-input">
                 </div>
-                <button class="button button--primary form-button--full-width">Agendar Jogo</button>
             </div>
-            -->
+            <button id="schedule-game-button" class="button button--primary form-button--full-width">Agendar Jogo</button>
+
+            <h3 class="page-subheading">Próximos Jogos</h3>
+            <div id="upcoming-games-list" class="scheduled-games-container">
+                <!-- Próximos jogos serão exibidos aqui -->
+            </div>
+
+            <div class="accordion-item">
+                <button class="accordion-header" id="past-games-accordion">
+                    <h3>Jogos Passados</h3>
+                    <span class="material-icons">expand_more</span>
+                </button>
+                <div class="accordion-content">
+                    <div id="past-games-list" class="scheduled-games-container">
+                        <!-- Jogos passados serão exibidos aqui -->
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section id="stats-page" class="app-page stats-page-layout">
             <h2 class="page-heading">Estatísticas dos Jogadores</h2>
-            <h4>Em desenvolvimento...</h4>
+            <!--<h4>Em desenvolvimento...</h4>-->
         </section>
     </main>
+
+    <!-- Confirmation Modal Structure (NOVO) -->
+    <div id="confirmation-modal" class="confirmation-modal-overlay">
+        <div class="confirmation-modal-content">
+            <p id="confirmation-message" class="confirmation-message"></p>
+            <div class="confirmation-buttons">
+                <button id="confirm-yes-button" class="button confirmation-button--confirm">Sim</button>
+                <button id="confirm-no-button" class="button confirmation-button--cancel">Não</button>
+            </div>
+        </div>
+    </div>
 
     <!-- NOVO: Overlay para fechar o menu ao clicar fora -->
     <div id="sidebar-overlay" class="sidebar-overlay"></div>
@@ -366,5 +400,6 @@
     <div id="message-container" class="message-container"></div>
 
     <script type="module" src="js/main.js"></script>
+    <!-- REMOVIDO: Bloco de registro duplicado do Service Worker -->
 </body>
 </html>
