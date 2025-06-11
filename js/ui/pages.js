@@ -4,13 +4,14 @@
 import * as Elements from './elements.js';
 import { getIsGameInProgress, resetGameForNewMatch, getCurrentTeam1, getCurrentTeam2, getActiveTeam1Name, getActiveTeam2Name, getActiveTeam1Color, getActiveTeam2Color, incrementScore, decrementScore, getAllGeneratedTeams, setCurrentTeam1, setCurrentTeam2, setActiveTeam1Name, setActiveTeam2Name, setActiveTeam1Color, setActiveTeam2Color, getTeam1Score, getTeam2Score } from '../game/logic.js';
 import { updateScoreDisplay, updateTimerDisplay, updateSetTimerDisplay, renderScoringPagePlayers, updateTeamDisplayNamesAndColors, updateNavScoringButton, renderTeams, renderTeamsInModal } from './game-ui.js';
-import { loadConfig, saveConfig } from './config-ui.js';
+import { loadConfig, saveConfig, setupConfigUI } from './config-ui.js';
 import { renderPlayersList, updatePlayerCount, updateSelectAllToggle } from './players-ui.js';
-import { getCurrentUser, logout, loginWithGoogle } from '../firebase/auth.js';
-import { addPlayer, removePlayer } from '../data/players.js';
+import { getCurrentUser, logout } from '../firebase/auth.js';
 import { displayMessage } from './messages.js';
 // Importa as funções de scheduling-ui.js que serão usadas nos callbacks do modal
-import { cancelGame, deleteGame } from './scheduling-ui.js';
+import { cancelGame, deleteGame, setupSchedulingPage } from './scheduling-ui.js';
+import * as SchedulingUI from './scheduling-ui.js'; // Adicione esta linha para importar tudo
+import { addPlayer, removePlayer } from '../data/players.js'; // <-- ADICIONE ESTA LINHA
 
 let touchStartY = 0;
 const DRAG_THRESHOLD = 30; // Limite de movimento para diferenciar clique de arrastar
@@ -51,17 +52,15 @@ export function closeSidebar() {
     if (sidebar) {
         sidebar.classList.remove('active');
     }
-    // Garante que o mini-menu do perfil seja fechado ao fechar o sidebar
     if (profileMenu && profileMenu.classList.contains('active')) {
         profileMenu.classList.remove('active');
         if (userProfileHeader) {
             userProfileHeader.classList.remove('active');
         }
     }
-    // Oculta o overlay
     if (sidebarOverlay) {
-        sidebarOverlay.classList.add('hidden'); // Alterado para 'hidden' para melhor UX (não remova do DOM)
-        sidebarOverlay.classList.remove('active'); // Remove a classe 'active' também
+        sidebarOverlay.classList.add('hidden');
+        sidebarOverlay.classList.remove('active');
     }
 }
 
@@ -96,11 +95,10 @@ export async function showPage(pageIdToShow) {
         const currentUser = getCurrentUser();
         updatePlayerModificationAbility(!!currentUser);
         updatePlayerCount();
-        updateSelectAllToggle();
-    } else if (pageIdToShow === 'teams-page') {
+        updateSelectAllToggle();    } else if (pageIdToShow === 'teams-page') {
         renderTeams(getAllGeneratedTeams());
     } else if (pageIdToShow === 'config-page') {
-        loadConfig();
+        setupConfigUI(); // Isso já chama loadConfig() internamente
     }
     // REMOVIDO: Importação assíncrona e chamada de setupSchedulingPage aqui.
     // Ela será chamada uma única vez no main.js.
@@ -118,6 +116,13 @@ export async function showPage(pageIdToShow) {
     } else if (pageIdToShow === 'start-page') {
         resetGameForNewMatch();
         setGameStartedExplicitly(false);
+    } else if (pageIdToShow === 'scheduling-page') {
+        // Força renderização instantânea ao entrar na tela de agendamentos
+        if (typeof SchedulingUI.renderScheduledGames === 'function') {
+            SchedulingUI.renderScheduledGames();
+        }
+        // Garante que o listener esteja ativo ao entrar na tela
+        setupSchedulingPage();
     }
 }
 
@@ -183,6 +188,16 @@ export function updateProfileMenuLoginState() {
 
 
 /**
+ * Atualiza o nome do usuário exibido no sidebar.
+ * @param {string} playerName - nome do jogador salvo no Firestore
+ */
+export function updateSidebarUserName(playerName) {
+    if (Elements.userDisplayName()) {
+        Elements.userDisplayName().textContent = playerName || "Visitante";
+    }
+}
+
+/**
  * Configura os event listeners para os botões da barra lateral e mini-menu.
  * @param {Function} startGameHandler - Função para iniciar o jogo.
  * @param {Function} getPlayersHandler - Função para obter os jogadores.
@@ -206,8 +221,54 @@ export function setupSidebar(startGameHandler, getPlayersHandler) {
         item.addEventListener('click', () => {
             const pageId = item.id.replace('nav-', '');
             const targetPageId = pageId + '-page';
-
-            showPage(targetPageId);
+            
+            if (pageId === 'scoring') {
+                if (getIsGameInProgress()) {
+                    // Se já existe um jogo em andamento, perguntar se deseja iniciar um novo
+                    showConfirmationModal(
+                        'Deseja iniciar uma nova partida? A partida atual será perdida.',
+                        () => {
+                            // Se confirmar, verificar se há jogadores na partida atual
+                            import('../game/logic.js').then(({ endGame, startGame, getCurrentTeam1, getCurrentTeam2, resetGameForNewMatch }) => {
+                                const team1HasPlayers = getCurrentTeam1() && getCurrentTeam1().length > 0;
+                                const team2HasPlayers = getCurrentTeam2() && getCurrentTeam2().length > 0;
+                                
+                                // Só pergunta se quer salvar se tiver jogadores em ambos os times
+                                if (team1HasPlayers && team2HasPlayers) {
+                                    showConfirmationModal(
+                                        'Deseja salvar a partida atual no histórico?',
+                                        () => {
+                                            // Se confirmar, salva a partida atual
+                                            endGame(); // endGame já salva a partida
+                                            // Mostra a tela inicial em vez de iniciar nova partida
+                                            showPage('start-page');
+                                        },
+                                        () => {
+                                            // Se não confirmar, apenas reseta e mostra a tela inicial
+                                            resetGameForNewMatch();
+                                            showPage('start-page');
+                                        }
+                                    );
+                                } else {
+                                    // Se não tiver jogadores, apenas reseta e mostra a tela inicial
+                                    resetGameForNewMatch();
+                                    showPage('start-page');
+                                }
+                            });
+                        },
+                        () => {
+                            // Se não confirmar, apenas mostra a página de pontuação atual
+                            showPage(targetPageId);
+                        }
+                    );
+                } else {
+                    // Se não houver jogo em andamento, mostra a tela inicial
+                    showPage('start-page');
+                }
+            } else {
+                showPage(targetPageId);
+            }
+            
             closeSidebar();
         });
     });
@@ -219,10 +280,45 @@ export function setupSidebar(startGameHandler, getPlayersHandler) {
             const profileMenu = Elements.profileMenu();
             const userProfileHeader = Elements.userProfileHeader();
             if (profileMenu && userProfileHeader) {
+                // Cria dinamicamente o botão de login/logout se não existir
+                let logoutBtn = Elements.profileLogoutButton();
+                if (!logoutBtn) {
+                    logoutBtn = document.createElement('button');
+                    logoutBtn.id = 'profile-logout-button';
+                    logoutBtn.className = 'profile-menu-item';
+                    profileMenu.appendChild(logoutBtn);
+                }
+                // Atualiza o texto/ícone do botão
+                const currentUser = getCurrentUser();
+                if (currentUser && currentUser.isAnonymous) {
+                    logoutBtn.innerHTML = '<span class="material-icons">login</span> Logar';
+                } else {
+                    logoutBtn.innerHTML = '<span class="material-icons">logout</span> Sair';
+                }
+                // Remove event listeners antigos
+                logoutBtn.replaceWith(logoutBtn.cloneNode(true));
+                const freshLogoutBtn = Elements.profileLogoutButton();
+                freshLogoutBtn.addEventListener('click', () => {
+                    const user = getCurrentUser();
+                    if (user && user.isAnonymous) {
+                        loginWithGoogle();
+                    } else {
+                        logout();
+                    }
+                    closeSidebar();
+                });
                 profileMenu.classList.toggle('active');
                 userProfileHeader.classList.toggle('active');
             }
         });
+    }
+
+    // REMOVIDO: Lógica para adicionar botão de alterar nome de exibição
+    if (Elements.profileMenu()) {
+        const logoutBtn = Elements.profileLogoutButton();
+        if (logoutBtn) {
+            logoutBtn.parentNode.removeChild(logoutBtn);
+        }
     }
 
     // Listener para o botão "Sair" (agora dinâmico "Logar"/"Sair") dentro do mini-menu
@@ -273,13 +369,22 @@ export function setupPageNavigation(startGameHandler, getPlayersHandler, appId) 
             const playerName = playerNameInput ? playerNameInput.value.trim() : '';
             
             if (playerName) {
-                const currentUser = getCurrentUser();
-                await addPlayer(playerName, currentUser ? currentUser.uid : null, appId); 
-                if (playerNameInput) {
-                    playerNameInput.value = '';
+                try {
+                    let db = null;
+                    if (navigator.onLine) {
+                        const { getFirestoreDb } = await import('../firebase/config.js');
+                        db = getFirestoreDb();
+                    }
+                    
+                    await addPlayer(db, appId, playerName);
+                    if (playerNameInput) {
+                        playerNameInput.value = '';
+                    }
+                    displayMessage("Jogador adicionado com sucesso!", "success");
+                } catch (error) {
+                    console.error("Erro ao adicionar jogador:", error);
+                    displayMessage("Erro ao adicionar jogador. Tente novamente.", "error");
                 }
-            } else {
-                // console.warn("O nome do jogador não pode estar vazio.");
             }
         });
     }
@@ -297,25 +402,30 @@ export function setupPageNavigation(startGameHandler, getPlayersHandler, appId) 
     }
 
     if (Elements.playersListContainer()) {
+        // Substitua o listener abaixo para só remover após confirmação
         Elements.playersListContainer().addEventListener('click', async (event) => {
             if (event.target.closest('.remove-button')) {
                 const button = event.target.closest('.remove-button');
                 const playerIdToRemove = button.dataset.playerId;
-                if (playerIdToRemove) {
-                    const currentUser = getCurrentUser();
-                    await removePlayer(playerIdToRemove, currentUser ? currentUser.uid : null, appId); 
+                if (playerIdToRemove) { // <-- Corrigido: estava faltando parênteses
+                    // Mostra confirmação ANTES de remover
+                    showConfirmationModal(
+                        'Tem certeza que deseja excluir este jogador?',
+                        async () => {
+                            const currentUser = getCurrentUser();
+                            await removePlayer(playerIdToRemove, currentUser ? currentUser.uid : null, appId);
+                        }
+                    );
                 }
             }
         });
 
-        if (Elements.playersListContainer()) {
-            Elements.playersListContainer().addEventListener('change', (event) => {
-                if (event.target.classList.contains('player-checkbox')) {
-                    updatePlayerCount();
-                    updateSelectAllToggle();
-                }
-            });
-        }
+        Elements.playersListContainer().addEventListener('change', (event) => {
+            if (event.target.classList.contains('player-checkbox')) {
+                updatePlayerCount();
+                updateSelectAllToggle();
+            }
+        });
     }
 
     loadConfig();
@@ -352,7 +462,7 @@ export function setupAccordion() {
  */
 export function openTeamSelectionModal(panelId) {
     if (!Elements.teamSelectionModal()) {
-        console.error("Elemento do modal de seleção de time não encontrado.");
+        // Removido: console.error("Elemento do modal de seleção de time não encontrado.");
         displayMessage("Erro: Modal de seleção de time não encontrado.", "error");
         return;
     }
@@ -513,7 +623,7 @@ export function showConfirmationModal(message, onConfirm, onCancel = null) {
     const noButton = Elements.confirmNoButton();
 
     if (!modal || !msgElement || !yesButton || !noButton) {
-        console.error("Elementos do modal de confirmação não encontrados.");
+        // Removido: console.error("Elementos do modal de confirmação não encontrados.");
         return;
     }
 
@@ -544,13 +654,13 @@ function handleConfirmClick() {
     if (onConfirmCallback) {
         try {
             onConfirmCallback();
-        } catch (error) { // CORRIGIDO: 'catches' para 'catch'
+        } catch (error) {
             console.error('Erro ao executar a ação confirmada:', error);
             displayMessage('Erro ao executar a ação confirmada.', 'error');
         }
     }
-    hideConfirmationModal(); // MOVIDO: Agora o modal é escondido DEPOIS da execução do callback.
-    onConfirmCallback = null; // Resetar APÓS uso
+    hideConfirmationModal();
+    onConfirmCallback = null;
     onCancelCallback = null;
 }
 
@@ -559,6 +669,71 @@ function handleCancelClick() {
     if (onCancelCallback) {
         onCancelCallback();
     }
-    onConfirmCallback = null; // Resetar APÓS uso
+    onConfirmCallback = null;
     onCancelCallback = null;
 }
+
+// Lista de páginas principais na ordem do menu lateral
+const MAIN_PAGES = [
+    'scoring-page',
+    'teams-page',
+    'players-page',
+    'history-page',
+    'scheduling-page',
+    'stats-page',
+    'config-page'
+];
+
+// Variáveis para swipe lateral
+let swipeStartX = null;
+let swipeStartY = null;
+const SWIPE_X_THRESHOLD = 60; // Pixels mínimos para considerar swipe
+const SWIPE_Y_MAX = 40; // Máximo de desvio vertical para considerar swipe lateral
+
+function setupSwipeNavigation() {
+    const mainContent = document.querySelector('.app-main-content');
+    if (!mainContent) return;
+
+    mainContent.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            swipeStartX = e.touches[0].clientX;
+            swipeStartY = e.touches[0].clientY;
+        }
+    });
+
+    mainContent.addEventListener('touchend', (e) => {
+        if (swipeStartX === null || swipeStartY === null) return;
+        const endX = e.changedTouches[0].clientX;
+        const endY = e.changedTouches[0].clientY;
+        const deltaX = endX - swipeStartX;
+        const deltaY = endY - swipeStartY;
+
+        // Só considera swipe lateral se o movimento for predominantemente horizontal
+        if (Math.abs(deltaX) > SWIPE_X_THRESHOLD && Math.abs(deltaY) < SWIPE_Y_MAX) {
+            handleSwipeNavigation(deltaX);
+        }
+        swipeStartX = null;
+        swipeStartY = null;
+    });
+}
+
+function handleSwipeNavigation(deltaX) {
+    // Só permite swipe se estiver em uma das páginas principais
+    const idx = MAIN_PAGES.indexOf(currentPageId);
+    if (idx === -1) return;
+
+    let nextIdx = null;
+    if (deltaX < 0 && idx < MAIN_PAGES.length - 1) {
+        // Swipe para a esquerda: próxima página
+        nextIdx = idx + 1;
+    } else if (deltaX > 0 && idx > 0) {
+        // Swipe para a direita: página anterior
+        nextIdx = idx - 1;
+    }
+    if (nextIdx !== null) {
+        showPage(MAIN_PAGES[nextIdx]);
+    }
+}
+
+// No final do arquivo (ou após setupScoreInteractions), chame a função para ativar o swipe:
+setupSwipeNavigation();

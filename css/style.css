@@ -207,44 +207,35 @@ button {
     right: 0;
     bottom: 0;
     background-color: #ccc;
-    -webkit-transition: .4s;
+    transition: .4s;
+    min-width: 40px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
     transition: .4s;
 }
 
 input:checked + .slider {
-  background-color: #2196F3;
-}
-
-input:focus + .slider {
-  box-shadow: 0 0 1px #2196F3;
+    background-color: #2196F3;
 }
 
 input:checked + .slider:before {
-  -webkit-transform: translateX(20px);
-  -ms-transform: translateX(20px);
-  transform: translateX(20px);
+    transform: translateX(20px);
 }
 
-/* Rounded sliders */
 .slider.round {
-  border-radius: 34px;
-  min-width: 40px;
+    border-radius: 34px;
 }
 
 .slider.round:before {
-  border-radius: 50%;
-}
-
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 16px;
-  width: 16px;
-  left: 2px;
-  bottom: 2px;
-  background-color: white;
-  -webkit-transition: .4s;
-  transition: .4s;
+    border-radius: 50%;
 }
 
 .header-button-container {
@@ -315,6 +306,10 @@ input:checked + .slider:before {
     /* NOVO: Remove a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+    position: relative;
+    padding: 8px 0px;
+    gap: 8px;
 }
 
 .user-profile-header:hover {
@@ -350,47 +345,49 @@ input:checked + .slider:before {
 }
 
 
-/* NOVO: Estilos para o mini-menu do perfil */
+/* --- MENU DE PERFIL UNIFICADO E CORRIGIDO --- */
 .profile-menu {
-    display: none; /* Oculto por padrão */
+    display: none;
     flex-direction: column;
     position: absolute;
-    top: 100%; /* Posição abaixo do user-profile-header */
+    top: 100%;
     left: 0;
     width: 100%;
-    background-color: #333;
-    border-radius: 0 0 8px 8px; /* Apenas as bordas inferiores arredondadas */
+    background-color: #222;
+    border-radius: 0 0 8px 8px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    z-index: 960; /* Acima do sidebar, mas abaixo do botão de fechar */
-    overflow: hidden; /* Garante que o conteúdo não vaze se houver padding/margin */
+    z-index: 960;
+    overflow: hidden;
 }
-
 .profile-menu.active {
-    display: flex; /* Exibir quando ativo */
+    display: flex;
 }
-
 .profile-menu-item {
-    background-color: transparent;
-    border: none;
-    color: white;
-    padding: 0.75rem 1rem;
-    text-align: left;
-    width: 100%;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    color: #fff;
     cursor: pointer;
-    transition: background-color 0.2s ease;
-    font-size: 0.9rem;
-    box-shadow: none; /* Remove sombra padrão do botão */
-    /* NOVO: Remove a demarcação azul em cliques/toques */
-    outline: none;
-    -webkit-tap-highlight-color: transparent;
+    text-align: left;
+    gap: 8px;
+    background-color: #333;
+    transition: background 0.2s;
 }
-
 .profile-menu-item:hover {
     background-color: #444;
 }
+.profile-menu-arrow {
+    color: #D1D5DB;
+    margin-left: auto;
+    transition: transform 0.2s ease;
+}
+.user-profile-header.active .profile-menu-arrow {
+    transform: rotate(180deg);
+}
+/* --- FIM MENU DE PERFIL UNIFICADO --- */
+
 
 .sidebar-nav {
     display: flex;
@@ -612,7 +609,7 @@ input:checked + .slider:before {
     cursor: pointer;
     transition: background-color 0.3s ease;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    /* NOVO: Remove a demarcação azul em cliques/toques */
+    /* NOVO: Removes a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -801,7 +798,11 @@ input:checked + .slider:before {
     flex: 1; /* Ocupa o espaço vertical restante */
     width: 100%;
     position: relative;
-    /* NOVO: Remove a demarcação azul em cliques/toques */
+    background: #181c24;
+    border-radius: 1.5rem;
+    box-shadow: 0 4px 24px 0 rgba(0,0,0,0.18);
+    overflow: hidden;
+    /* NOVO: Removes a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -818,7 +819,7 @@ input:checked + .slider:before {
     border-radius: 0;
     cursor: pointer;
     transition: background-color 0.3s ease; /* Removido transform para evitar animação */
-    /* NOVO: Remove a demarcação azul em cliques/toques */
+    /* NOVO: Removes a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -833,10 +834,69 @@ input:checked + .slider:before {
     border-left: none;
 }
 
+/* Removidas todas as animações relacionadas à troca de times */
+.swap-animate-left,
+.swap-animate-right,
+.swap-animate-fade {
+  animation: none !important;
+  transition: none !important;
+  box-shadow: none !important;
+}
+
+@keyframes swapLeftStrong {}
+@keyframes swapRightStrong {}
+@keyframes swapLeft {}
+@keyframes swapRight {}
+@keyframes swapFade {}
+
+/* Animação de slide horizontal cruzado para troca de lados dos times */
+.swap-slide-left {
+  animation: swapSlideLeft 0.6s cubic-bezier(0.4,0,0.2,1);
+  z-index: 2;
+}
+.swap-slide-right {
+  animation: swapSlideRight 0.6s cubic-bezier(0.4,0,0.2,1);
+  z-index: 2;
+}
+@keyframes swapSlideLeft {
+  0% { transform: translateX(0); }
+  40% { transform: translateX(-120%); }
+  41% { transform: translateX(120%); }
+  100% { transform: translateX(0); }
+}
+@keyframes swapSlideRight {
+  0% { transform: translateX(0); }
+  40% { transform: translateX(120%); }
+  41% { transform: translateX(-120%); }
+  100% { transform: translateX(0); }
+}
+
+ /* Efeito avançado: cruzamento suave com blur e scale, sem gooey */
+.score-panel.cross-advanced-left {
+  animation: crossAdvancedLeft 0.36s cubic-bezier(0.5,0,0.2,1);
+  z-index: 10;
+}
+.score-panel.cross-advanced-right {
+  animation: crossAdvancedRight 0.36s cubic-bezier(0.5,0,0.2,1);
+  z-index: 10;
+}
+@keyframes crossAdvancedLeft {
+  0% { transform: scale(1) translateX(0); filter: none; }
+  40% { transform: scale(1.06) translateX(36px); filter: blur(2.5px); }
+  60% { transform: scale(1.06) translateX(36px); filter: blur(2.5px); }
+  100% { transform: scale(1) translateX(0); filter: none; }
+}
+@keyframes crossAdvancedRight {
+  0% { transform: scale(1) translateX(0); filter: none; }
+  40% { transform: scale(1.06) translateX(-36px); filter: blur(2.5px); }
+  60% { transform: scale(1.06) translateX(-36px); filter: blur(2.5px); }
+  100% { transform: scale(1) translateX(0); filter: none; }
+}
+
 .team-name {
     font-size: 2.5rem;
     margin-bottom: 0.5rem; /* Espaço abaixo do nome do time */
-    /* NOVO: Remove a demarcação azul em cliques/toques */
+    /* NOVO: Removes a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -848,6 +908,34 @@ input:checked + .slider:before {
     margin-bottom: 0;
     line-height: 1;
     text-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.score-number.score-animate,
+.score-number.score-animate-team1,
+.score-number.score-animate-team2,
+.score-number.score-animate-team1-down,
+.score-number.score-animate-team2-down {
+  animation: none !important;
+}
+
+.score-number.score-animate-up {
+  animation: scoreUpAnim 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+.score-number.score-animate-down {
+  animation: scoreDownAnim 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+@keyframes scoreUpAnim {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.25) translateY(-10px); }
+  60% { transform: scale(0.95) translateY(0); }
+  100% { transform: scale(1); }
+}
+@keyframes scoreDownAnim {
+  0% { transform: scale(1); }
+  30% { transform: scale(0.85) translateY(10px); }
+  60% { transform: scale(1.05) translateY(0); }
+  100% { transform: scale(1); }
 }
 
 .stars-container {
@@ -914,9 +1002,22 @@ input:checked + .slider:before {
     padding: 1rem;
     border-radius: 0.5rem;
     box-shadow: 0 4px 6px -1-px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    /* NOVO: Remove a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+}
+
+.team-card-list {
+    color: #D1D5DB;
+    list-style: inside;
+    padding: 0px;
+    margin: 0px;
+    margin-top: 10px;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .team-card-title {
@@ -982,24 +1083,31 @@ input:checked + .slider:before {
 
 .player-list-item {
     background-color: #222;
-    box-shadow: 0 4px 6px -1-px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     padding: 0.75rem;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: space-between;    
     flex-direction: row-reverse;
-    /* NOVO: Remove a demarcação azul em cliques/toques */
-    outline: none;
-    -webkit-tap-highlight-color: transparent;
+}
+
+/* Estilo para jogadores locais */
+.player-info span[data-local="true"] {
+    font-style: italic;
 }
 
 .player-info {
-    width: 100%;
     display: flex;
-    flex-direction: row-reverse;    
+    align-items: center;
     justify-content: space-between;
-    margin-left: 20px;
+    flex: 1;
+    gap: 1rem;
+}
+
+.player-info span {
+    color: #E5E7EB;
+    font-size: 1rem;
 }
 
 .remove-button {
@@ -1007,9 +1115,28 @@ input:checked + .slider:before {
     box-shadow: none;
     color: #DC2626;
     padding: 0.25rem;
-    /* NOVO: Remove a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
+    display: none; /* Esconde por padrão */
+}
+
+.remove-button.visible {
+    display: flex; /* Mostra apenas quando tiver a classe visible */
+}
+
+/* Estilo para o botão de excluir jogo */
+.delete-game-button {
+    background-color: transparent;
+    box-shadow: none;
+    color: #DC2626;
+    padding: 0.25rem;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    display: none; /* Esconde por padrão */
+}
+
+.delete-game-button.visible {
+    display: flex; /* Mostra apenas quando tiver a classe visible */
 }
 
 .team-players-column {
@@ -1021,7 +1148,7 @@ input:checked + .slider:before {
     margin: 5px;
     min-width: 80px;
     max-width: 110px;
-    /* NOVO: Remove a demarcação azul em cliques/toques */
+    /* NOVO: Removes a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
     overflow-y: auto; /* Adicionado para garantir rolagem independente */
@@ -1066,7 +1193,7 @@ input:checked + .slider:before {
     border: none;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
     z-index: 10;
-    /* NOVO: Remove a demarcação azul em cliques/toques */
+    /* NOVO: Removes a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -1086,7 +1213,7 @@ input:checked + .slider:before {
     border-radius: 8px 8px 0px 0px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
     z-index: 10;
-    /* NOVO: Remove a demarcação azul em cliques/toques */
+    /* NOVO: Removes a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -1101,7 +1228,7 @@ input:checked + .slider:before {
     align-items: center;
     gap: 0.75rem;
     padding: 0;
-    /* NOVO: Remove a demarcação azul em cliques/toques */
+    /* NOVO: Removes a demarcação azul em cliques/toques */
     outline: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -1209,7 +1336,7 @@ input:checked + .slider:before {
     margin-bottom: 20px;
     width: 100%;
     padding: 15px; /* Adicionado padding */
-    background-color: #2a2a2a; /* Adicionado background */
+    background-color: #222; /* Adicionado background */
     border-radius: 8px; /* Cantos arredondados */
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* Sombra suave */
 }
@@ -1527,6 +1654,16 @@ input:checked + .slider:before {
     /* NÃO É MAIS NECESSÁRIO position: absolute aqui, pois o .card-actions agora gerencia */
 }
 
+/* Estilo específico para o botão de excluir jogo */
+.delete-game-button {
+    color: #DC2626 !important;
+    display: none !important; /* Esconde por padrão */
+}
+
+.delete-game-button.visible {
+    display: flex !important; /* Mostra apenas quando tiver a classe visible */
+}
+
 .card-action-button .material-icons {
     font-size: 1.6rem; /* Slightly larger icon */
 }
@@ -1744,7 +1881,10 @@ input:checked + .slider:before {
 
 /* Cores dos estados */
 .status-dot.online {
-    background-color: #4CAF50; /* Verde */
+    background-color: #28a745; /* Verde para admin */
+}
+.status-dot.not-admin-online {
+    background-color: #bdbdbd; /* Cinza para não-admins autenticados */
 }
 .status-text.online {
     color: #4CAF50; /* Texto verde */
@@ -1806,3 +1946,258 @@ input:checked + .slider:before {
     color: #F9FAFB;
     font-size: 1rem;
 }
+
+/* Wrapper dos painéis de pontuação */
+.score-panels-wrapper {
+  background: #181c24;
+  border-radius: 1.5rem;
+  box-shadow: 0 4px 24px 0 rgba(0,0,0,0.18);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem;
+  position: relative;
+  overflow: hidden;
+  transition: flex-direction 0.5s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Animação de troca de lados: inverte a ordem dos painéis */
+.score-panels-wrapper.swap-panels {
+  flex-direction: row-reverse;
+  transition: flex-direction 0.5s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Efeito de aproximação ao centro */
+.score-panel.animate-to-center {
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), filter 0.3s cubic-bezier(0.4,0,0.2,1);
+  transform: scale(1.06) translateX(0);
+  filter: brightness(1.08);
+  z-index: 2;
+}
+
+.score-panel.animate-from-center {
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), filter 0.3s cubic-bezier(0.4,0,0.2,1);
+  transform: scale(1) translateX(0);
+  filter: brightness(1);
+  z-index: 1;
+}
+
+/* Animação de cruzamento dos painéis dos times */
+.score-panel.cross-slide {
+  animation: crossSlidePanel 0.5s cubic-bezier(0.4,0,0.2,1);
+  z-index: 2;
+}
+@keyframes crossSlidePanel {
+  0% { transform: scale(1) translateX(0); opacity: 1; }
+  40% { transform: scale(1.08) translateX(var(--slide-dir, 0)); opacity: 0.7; }
+  60% { transform: scale(1.08) translateX(var(--slide-dir, 0)); opacity: 0.7; }
+  100% { transform: scale(1) translateX(0); opacity: 1; }
+}
+
+/* NOVO: Animação de troca de lados: scale + fade */
+.score-panel.cross-fade {
+  animation: crossFadePanel 0.38s cubic-bezier(0.4,0,0.2,1);
+  z-index: 2;
+}
+@keyframes crossFadePanel {
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(0.85); opacity: 0.2; }
+  60% { transform: scale(0.85); opacity: 0.2; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Animação de cruzamento horizontal real para troca de lados */
+.score-panel.cross-slide-left {
+  animation: crossSlideLeft 0.32s cubic-bezier(0.5,0,0.2,1);
+  z-index: 10;
+}
+.score-panel.cross-slide-right {
+  animation: crossSlideRight 0.32s cubic-bezier(0.5,0,0.2,1);
+  z-index: 10;
+}
+@keyframes crossSlideLeft {
+  0% { transform: scale(1) translateX(0); opacity: 1; }
+  100% { transform: scale(1.02) translateX(48px); opacity: 0.98; z-index: 20; }
+}
+@keyframes crossSlideRight {
+  0% { transform: scale(1) translateX(0); opacity: 1; }
+  100% { transform: scale(1.02) translateX(-48px); opacity: 0.98; z-index: 20; }
+}
+
+/* NOVO: Animação de spin horizontal 3D para troca de lados dos times */
+.score-panel.spin-swap-left {
+  animation: spinSwapLeft 0.38s cubic-bezier(0.5,0,0.2,1);
+  backface-visibility: hidden;
+  perspective: 600px;
+}
+.score-panel.spin-swap-right {
+  animation: spinSwapRight 0.38s cubic-bezier(0.5,0,0.2,1);
+  backface-visibility: hidden;
+  perspective: 600px;
+}
+@keyframes spinSwapLeft {
+  0% { transform: rotateY(0deg) scale(1); opacity: 1; }
+  50% { transform: rotateY(90deg) scale(0.92); opacity: 0.7; }
+  100% { transform: rotateY(0deg) scale(1); opacity: 1; }
+}
+@keyframes spinSwapRight {
+  0% { transform: rotateY(0deg) scale(1); opacity: 1; }
+  50% { transform: rotateY(-90deg) scale(0.92); opacity: 0.7; }
+  100% { transform: rotateY(0deg) scale(1); opacity: 1; }
+}
+
+/* Animação spinner global para troca de lados dos times */
+.score-panels-spinner {
+  animation: spinPanelsY 0.48s cubic-bezier(0.5,0,0.2,1);
+  transform-style: preserve-3d;
+  perspective: 900px;
+}
+@keyframes spinPanelsY {
+  0% { transform: rotateY(0deg); }
+  100% { transform: rotateY(360deg); }
+}
+
+.delete-green {
+    color: #28a745 !important;
+}
+.delete-red {
+    color: #f03737 !important;
+}
+
+/* NOVO: Estilos para botões de perigo (danger buttons) */
+.danger-button {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background-color 0.2s;
+    width: 100%;
+    margin: 8px 0;
+}
+
+.danger-button:hover {
+    background-color: #c82333;
+}
+
+.danger-button:active {
+    background-color: #bd2130;
+}
+
+.danger-button .material-icons {
+    font-size: 20px;
+}
+
+.danger-button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.danger-button:disabled:hover {
+    background-color: #6c757d;
+}
+
+.form-group--full-width {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
+.setting-description {
+    font-size: 0.875rem;
+    color: #9CA3AF;
+    margin-top: 4px;
+    text-align: justify;
+}
+
+#reset-user-section {
+    border-top: 1px solid #374151;
+    margin-top: 16px;
+    padding-top: 16px;
+}
+
+/* --- REMOVIDO: Blocos duplicados de menu de perfil e dropdown antigos para evitar conflito visual --- */
+
+
+/* Estilos para o menu de perfil */
+.user-profile-header {
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 4px 0px;
+    gap: 8px;
+}
+
+.profile-menu {
+    display: none;
+    flex-direction: column;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background-color: #222;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    z-index: 960;
+    overflow: hidden;
+}
+
+.profile-menu.active {
+    display: flex;
+}
+
+.profile-menu-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    text-align: left;
+    gap: 8px;
+    background-color: #333;
+    transition: background 0.2s;
+}
+
+.profile-menu-item:hover {
+    background-color: #444;
+}
+
+.profile-menu-arrow {
+    color: #D1D5DB;
+    margin-left: auto;
+    transition: transform 0.2s ease;
+}
+
+.user-profile-header.active .profile-menu-arrow {
+    transform: rotate(180deg);
+}
+
+/* NOVO: Estilo para o campo de senha admin */
+input[type="password"] {
+    width: 100%;
+    flex-grow: 1;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background-color: #333;
+    border: none;
+    color: white;
+    outline: none;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.form-input[type="password"] {
+    background-color: #333;
+    color: white;
+    border: 1px solid #444;
+}
+
+/*# sourceMappingURL=style.css.map */

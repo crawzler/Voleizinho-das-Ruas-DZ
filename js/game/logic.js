@@ -10,6 +10,7 @@ import { showPage, setGameStartedExplicitly } from '../ui/pages.js';
 import * as Elements from '../ui/elements.js';
 import { displayMessage } from '../ui/messages.js';
 import { saveGameToHistory } from '../data/history.js';
+import { addMatchToHistory } from '../ui/history-ui.js';
 
 let team1Score = 0;
 let team2Score = 0;
@@ -69,7 +70,6 @@ export function incrementScore(teamId) {
     const vibrationEnabled = config.vibration ?? true;
 
     if (!isGameInProgress) {
-        console.warn('Jogo não está em andamento. Não é possível pontuar.');
         return;
     }
 
@@ -90,7 +90,6 @@ export function incrementScore(teamId) {
  */
 export function decrementScore(teamId) {
     if (!isGameInProgress) {
-        console.warn('Jogo não está em andamento. Não é possível decrementar pontuação.');
         return;
     }
 
@@ -142,7 +141,6 @@ function updateTimerButtonIcon() {
  */
 export function toggleTimer() {
     if (!isGameInProgress) {
-        console.warn('Não é possível controlar o timer: jogo não está em andamento.');
         return;
     }
 
@@ -172,13 +170,9 @@ function checkSetEnd(pointsPerSet) {
     if (team1Score >= pointsPerSet && team1Score - team2Score >= 2) {
         setWinner = 'team1';
         team1Sets++;
-        console.log('Time 1 venceu o set!');
-        displayMessage(`${activeTeam1Name} venceu o set!`, 'success');
     } else if (team2Score >= pointsPerSet && team2Score - team1Score >= 2) {
         setWinner = 'team2';
         team2Sets++;
-        console.log('Time 2 venceu o set!');
-        displayMessage(`${activeTeam2Name} venceu o set!`, 'success');
     }
 
     if (setWinner) {
@@ -207,8 +201,7 @@ function checkMatchEnd(setsToWin) {
     }
 
     if (matchWinner) {
-        displayMessage(`${matchWinner} venceu a partida!`, 'success');
-        endGame(); // Encerra o jogo
+        endGame();
         return true;
     }
     return false;
@@ -233,17 +226,8 @@ function resetSet() {
  */
 export function swapTeams() {
     if (!isGameInProgress) {
-        console.warn('Não é possível trocar os times: jogo não está em andamento.');
         return;
     }
-
-    console.log('--- Antes da troca (swapTeams) ---');
-    console.log('team1Score:', team1Score, 'team2Score:', team2Score);
-    console.log('activeTeam1Name:', activeTeam1Name, 'activeTeam2Name:', activeTeam2Name);
-    console.log('activeTeam1Color:', activeTeam1Color, 'activeTeam2Color:', activeTeam2Color);
-    console.log('currentTeam1:', currentTeam1, 'currentTeam2:', currentTeam2);
-    console.log('currentTeam1Index:', currentTeam1Index, 'currentTeam2Index:', currentTeam2Index);
-
 
     // Troca as pontuações
     const tempScore = team1Score;
@@ -275,16 +259,15 @@ export function swapTeams() {
     currentTeam1Index = currentTeam2Index;
     currentTeam2Index = tempIndex;
 
-    console.log('--- Depois da troca (swapTeams) ---');
-    console.log('team1Score:', team1Score, 'team2Score:', team2Score);
-    console.log('activeTeam1Name:', activeTeam1Name, 'activeTeam2Name:', activeTeam2Name);
-    console.log('activeTeam1Color:', activeTeam1Color, 'activeTeam2Color:', activeTeam2Color);
-    console.log('currentTeam1:', currentTeam1, 'currentTeam2:', currentTeam2);
-    console.log('currentTeam1Index:', currentTeam1Index, 'currentTeam2Index:', currentTeam2Index);
-
+    // Chama a animação de troca de times na UI
+    import('../ui/game-ui.js').then(mod => {
+        if (typeof mod.animateSwapTeams === 'function') {
+            mod.animateSwapTeams();
+        }
+    });
 
     // Atualiza a exibição na UI
-    updateScoreDisplay(team1Score, team2Score);
+    updateScoreDisplay(team1Score, team2Score, true); // skipAnimation = true
     updateTeamDisplayNamesAndColors(activeTeam1Name, activeTeam2Name, activeTeam1Color, activeTeam2Color);
     updateSetsDisplay(team1Sets, team2Sets);
     const config = loadConfig();
@@ -294,20 +277,11 @@ export function swapTeams() {
 }
 
 /**
- * Esta função não deve ser chamada diretamente. A geração de times é gerenciada em teams.js.
- * @param {string} appId - O ID do aplicativo.
- */
-export function generateTeams(appId) {
-    console.warn("A função logic.js/generateTeams não deve ser chamada diretamente. Use teams.js/generateTeams.");
-}
-
-/**
  * Inicia uma nova partida.
  * @param {string} appId - O ID do aplicativo.
  */
 export function startGame(appId) {
     if (isGameInProgress) {
-        console.warn('Jogo já está em andamento!');
         return;
     }
 
@@ -348,12 +322,7 @@ export function startGame(appId) {
         activeTeam2Name = config.customTeam2Name || 'Time 2';
         activeTeam1Color = config.customTeam1Color || '#325fda';
         activeTeam2Color = config.customTeam2Color || '#f03737';
-
-        displayMessage("Nenhum time gerado. Vá para a página 'Times' para gerar alguns!", "info");
     }
-
-    console.log('[startGame] currentTeam1 (final):', currentTeam1);
-    console.log('[startGame] currentTeam2 (final):', currentTeam2);
 
     updateTeamDisplayNamesAndColors(activeTeam1Name, activeTeam2Name, activeTeam1Color, activeTeam2Color);
     // Condição para exibir jogadores: displayPlayers E (time1 ou time2 tem jogadores)
@@ -381,7 +350,6 @@ export function startGame(appId) {
  */
 export function cycleTeam(teamPanel) {
     if (!allGeneratedTeams || allGeneratedTeams.length === 0) {
-        displayMessage("Nenhum time gerado. Gere times na página 'Times' primeiro.", "info");
         return;
     }
 
@@ -395,14 +363,12 @@ export function cycleTeam(teamPanel) {
         currentTeam1 = selectedTeam.players;
         activeTeam1Name = config[`customTeam${currentTeam1Index + 1}Name`] || selectedTeam.name;
         activeTeam1Color = config[`customTeam${currentTeam1Index + 1}Color`] || defaultColors[currentTeam1Index] || '#325fda';
-        displayMessage(`Time 1: ${activeTeam1Name}`, 'info');
     } else if (teamPanel === 'team2') {
         currentTeam2Index = (currentTeam2Index + 1) % allGeneratedTeams.length;
         const selectedTeam = allGeneratedTeams[currentTeam2Index];
         currentTeam2 = selectedTeam.players;
         activeTeam2Name = config[`customTeam${currentTeam2Index + 1}Name`] || selectedTeam.name;
         activeTeam2Color = config[`customTeam${currentTeam2Index + 1}Color`] || defaultColors[currentTeam2Index] || '#f03737';
-        displayMessage(`Time 2: ${activeTeam2Name}`, 'info');
     }
 
     updateTeamDisplayNamesAndColors(activeTeam1Name, activeTeam2Name, activeTeam1Color, activeTeam2Color);
@@ -506,25 +472,40 @@ export function setActiveTeam2Color(color) {
  */
 export function endGame() {
     if (!isGameInProgress) {
-        displayMessage("Nenhum jogo em andamento para encerrar.", "info");
         return;
     }
 
-    const gameData = {
-        team1Name: activeTeam1Name,
-        team2Name: activeTeam2Name,
-        team1Score: team1Score,
-        team2Score: team2Score,
-        team1Sets: team1Sets,
-        team2Sets: team2Sets,
-        duration: timeElapsed,
-        team1Players: currentTeam1,
-        team2Players: currentTeam2,
-        date: new Date().toISOString(),
-        sets: setsHistory
-    };
-
-    saveGameToHistory(gameData);
+    // Verificar se ambos os times têm jogadores antes de salvar
+    const team1HasPlayers = currentTeam1 && currentTeam1.length > 0;
+    const team2HasPlayers = currentTeam2 && currentTeam2.length > 0;
+    
+    if (team1HasPlayers && team2HasPlayers) {
+        // Formatar os dados para o formato esperado por history-ui.js
+        const matchData = {
+            teamA: {
+                name: activeTeam1Name,
+                players: currentTeam1
+            },
+            teamB: {
+                name: activeTeam2Name,
+                players: currentTeam2
+            },
+            score: {
+                teamA: team1Score,
+                teamB: team2Score,
+                setsA: team1Sets,
+                setsB: team2Sets
+            },
+            winner: team1Sets > team2Sets ? activeTeam1Name : activeTeam2Name,
+            timeElapsed: timeElapsed,
+            createdAt: new Date().toISOString(),
+            sets: setsHistory,
+            location: 'Não informado'
+        };
+        
+        // Adicionar ao histórico usando a função do history-ui.js que já tem o modal de confirmação
+        addMatchToHistory(matchData);
+    }
 
     clearInterval(timerInterval);
     clearInterval(setTimerInterval);
@@ -533,7 +514,6 @@ export function endGame() {
     isTimerRunning = false;
     isGameInProgress = false;
     setGameStartedExplicitly(false);
-    displayMessage("Jogo encerrado e salvo no histórico!", "info");
     showPage('start-page');
 }
 
@@ -570,15 +550,11 @@ export function resetGameForNewMatch() {
     updateTimerDisplay(timeElapsed);
     updateSetTimerDisplay(setElapsedTime);
     updateTeamDisplayNamesAndColors(activeTeam1Name, activeTeam2Name, activeTeam1Color, activeTeam2Color);
-    console.log('DEBUG: Chamando updateNavScoringButton(false) em resetGameForNewMatch.');
     updateNavScoringButton(false, '');
     setGameStartedExplicitly(false);
     updateTimerButtonIcon();
-    // REMOVIDO: displayMessage('Jogo resetado. Pronto para uma nova partida!', 'success');
-
     if (Elements.timerAndSetTimerWrapper()) {
         Elements.timerAndSetTimerWrapper().style.display = 'none';
     }
-    // Ao resetar o jogo, garanta que os quadros de jogadores estejam vazios e ocultos
     renderScoringPagePlayers([], [], false);
 }

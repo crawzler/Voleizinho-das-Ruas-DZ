@@ -1,21 +1,17 @@
 // js/data/history.js
 // Manages game history data, using localStorage as a fallback.
 
-const HISTORY_STORAGE_KEY = 'gameHistory';
+const HISTORY_STORAGE_KEY = 'voleiScoreMatchHistory';
 
 /**
  * Salva o resultado de um jogo no histórico do localStorage.
  * @param {object} gameData - Os dados do jogo a serem salvos (ex: times, placar).
+ * @deprecated Esta função está sendo substituída por addMatchToHistory em history-ui.js
  */
 export const saveGameToHistory = async (gameData) => {
-    try {
-        const history = await loadGameHistory();
-        history.unshift({ ...gameData, id: `game-${Date.now()}` }); // Adiciona no início
-        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-        console.log("Jogo salvo no histórico local com sucesso!");
-    } catch (error) {
-        console.error("Erro ao salvar jogo no histórico local: ", error);
-    }
+    // Função mantida apenas para compatibilidade, mas não faz mais nada
+    // O salvamento agora é feito exclusivamente via addMatchToHistory que tem confirmação
+    console.log("saveGameToHistory está obsoleta, use addMatchToHistory");
 };
 
 /**

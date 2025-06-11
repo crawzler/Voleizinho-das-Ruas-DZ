@@ -2,8 +2,9 @@
 // Ponto de entrada principal do seu aplicativo. Orquestra a inicialização e os módulos.
 
 import { initFirebaseApp, getAppId } from './firebase/config.js';
-import { loginWithGoogle, logout, setupAuthListener, signInAnonymouslyUser, updateProfileMenuLoginState } from './firebase/auth.js'; // Imports updateProfileMenuLoginState
-import { loadPlayersFromLocalStorage, setupFirestorePlayersListener, addPlayer, removePlayer } from './data/players.js';
+import { logout, setupAuthListener, signInAnonymouslyUser, updateProfileMenuLoginState, getCurrentUser, loginWithGoogle } from './firebase/auth.js'; // Imports updateProfileMenuLoginState
+import { setupFirestorePlayersListener } from './data/players.js';
+import * as SchedulesData from './data/schedules.js';
 import { showPage, updatePlayerModificationAbility, setupSidebar, setupPageNavigation, setupAccordion, setupScoreInteractions, setupTeamSelectionModal, closeSidebar, showConfirmationModal, hideConfirmationModal } from './ui/pages.js';
 import { setupConfigUI, loadConfig } from './ui/config-ui.js'; // Importa loadConfig
 import { startGame, toggleTimer, swapTeams, endGame } from './game/logic.js';
@@ -12,7 +13,7 @@ import { loadAppVersion, registerServiceWorker } from './utils/app-info.js';
 import { getPlayers } from './data/players.js';
 import * as Elements from './ui/elements.js';
 import { displayMessage } from './ui/messages.js';
-import { updatePlayerCount, updateSelectAllToggle } from './ui/players-ui.js';
+import { updatePlayerCount, updateSelectAllToggle, savePlayerSelectionState } from './ui/players-ui.js';
 import { setupHistoryPage } from './ui/history-ui.js';
 import { setupSchedulingPage } from './ui/scheduling-ui.js';
 
@@ -20,6 +21,28 @@ import { signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1
 
 let authListenerInitialized = false;
 let loadingTimeout = null;
+
+// Use exatamente os UIDs das regras do Firebase
+const ADMIN_UIDS = [
+    "fVTPCFEN5KSKt4me7FgPyNtXHMx1",
+    "Q7cjHJcQoMV9J8IEaxnFFbWNXw22"
+    // Adicione mais UIDs de admin aqui, se necessário
+];
+
+// Função utilitária para checar se o usuário atual é admin
+function isCurrentUserAdmin() {
+    const user = getCurrentUser();
+    if (!user || !user.uid) return false;
+    return ADMIN_UIDS.includes(user.uid);
+}
+
+// Função utilitária para checar se o usuário atual está autenticado com Google
+function isCurrentUserGoogle() {
+    const user = getCurrentUser();
+    if (!user || !user.uid) return false;
+    // Firebase define isAnonymous = true para usuários anônimos
+    return !user.isAnonymous;
+}
 
 /**
  * Atualiza o indicador de status de conexão na UI.
@@ -49,7 +72,11 @@ export function updateConnectionIndicator(status) {
 
     switch (status) {
         case 'online':
-            statusDot.classList.add('online');
+            if (isCurrentUserGoogle()) {
+                statusDot.classList.add('online'); // Verde para autenticado Google
+            } else {
+                statusDot.classList.add('not-admin-online'); // Cinza para anônimo ou visitante
+            }
             statusText.textContent = 'Online';
             break;
         case 'offline':
@@ -74,7 +101,7 @@ export function hideLoadingOverlay() {
             clearTimeout(loadingTimeout);
             loadingTimeout = null;
         }
-        console.log("[main.js] Tela de carregamento oculta.");
+        // Log essencial removido
     }
 }
 
@@ -89,10 +116,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Inicia o timer para forçar o modo offline após 10 segundos, se necessário
     loadingTimeout = setTimeout(() => {
         if (!authListenerInitialized) {
-            console.log("[main.js] Tempo limite de carregamento excedido. Forçando modo offline.");
+            // Log essencial removido
             displayMessage("Não foi possível conectar. Modo offline ativado.", "info");
-            showPage('start-page'); // Força a exibição da página inicial
-            updateConnectionIndicator('offline'); // Força o indicador para offline (respeitará a config)
+            showPage('start-page');
+            updateConnectionIndicator('offline');
             hideLoadingOverlay();
         }
     }, 10000); // 10 segundos
@@ -104,17 +131,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         try {
             await signInWithCustomToken(auth, __initial_auth_token);
-            console.log("User logged in with Canvas initial token.");
-        } catch (error) {
-            console.error("Error logging in with Canvas initial token:", error);
-        }
+            // Log essencial removido
+        } catch (error) {}
     }
 
-    // CARREGA JOGADORES DO LOCALSTORAGE ANTES DE CONFIGURAR O LISTENER DE AUTENTICAÇÃO
-    loadPlayersFromLocalStorage();
-
     setupAuthListener(auth, db, appId);
-    authListenerInitialized = true; // Marca que o listener de autenticação foi inicializado
+    authListenerInitialized = true;
 
     setupSidebar();
     setupPageNavigation(startGame, getPlayers, appId);
@@ -201,25 +223,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // NOVO: Listener para detectar quando o aplicativo volta a ficar online
-    window.addEventListener('online', () => {
-        console.log("Application online again. Attempting to revalidate session...");
-        displayMessage("Online novamente! Tentando reconectar...", "info");
-        updateConnectionIndicator('reconnecting'); // Define estado "reconectando" imediatamente (respeitará a config)
-        setTimeout(() => { // Pequeno delay antes de confirmar online para visual
-            setupAuthListener(auth, db, appId); // Re-executa o listener para pegar o estado mais recente
+    window.addEventListener('online', async () => {
+        displayMessage("Online novamente! Sincronizando dados...", "info");
+        updateConnectionIndicator('reconnecting');
+        
+        try {
+            const { app, db, auth } = await initFirebaseApp();
+            const appId = getAppId();
+            
+            // Recarrega autenticação e configura listeners
+            await setupAuthListener(auth, db, appId);
+            await setupFirestorePlayersListener(db, appId);
             updateProfileMenuLoginState();
-        }, 1500);
+            
+            displayMessage("Dados sincronizados com sucesso!", "success");
+            updateConnectionIndicator('online');
+        } catch (error) {
+            console.error("Erro na sincronização:", error);
+            displayMessage("Erro ao sincronizar dados", "error");
+            updateConnectionIndicator('offline');
+        }
     });
 
-    // NOVO: Listener para detectar quando o aplicativo fica offline
     window.addEventListener('offline', () => {
-        console.log("Application offline.");
+        // Log essencial removido
         displayMessage("Você está offline.", "error");
         if (Elements.googleLoginButton()) Elements.googleLoginButton().disabled = true;
         if (Elements.anonymousLoginButton()) Elements.anonymousLoginButton().disabled = true;
         updateProfileMenuLoginState();
-        updateConnectionIndicator('offline'); // Define estado offline (respeitará a config)
+        updateConnectionIndicator('offline');
     });
+
+    // Dropdown user menu logic
+    const userDropdown = document.getElementById('userDropdown');
+    const userDropdownToggle = document.getElementById('userDropdownToggle');
+    const userDropdownMenu = document.getElementById('userDropdownMenu');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    if (userDropdown && userDropdownToggle && userDropdownMenu && logoutBtn) {
+        userDropdownToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userDropdown.classList.toggle('show');
+        });
+
+        // Prevent menu from closing when clicking inside
+        userDropdownMenu.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            userDropdown.classList.remove('show');
+        });
+
+        // Logout button
+        logoutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            userDropdown.classList.remove('show');
+            logout();
+        });
+    }
 
     // Define o estado inicial do indicador de conexão com base na configuração
     updateConnectionIndicator(navigator.onLine ? 'online' : 'offline');
@@ -230,7 +293,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (Elements.sidebarOverlay()) {
         Elements.sidebarOverlay().addEventListener('click', () => {
             closeSidebar();
-            console.log('Sidebar closed by clicking on overlay.');
-        });
-    }
+            // Log essencial removido
+        });    }
 });

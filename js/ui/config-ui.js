@@ -7,6 +7,9 @@ import { getCurrentTeam1, getCurrentTeam2, getActiveTeam1Name, getActiveTeam2Nam
 import { displayMessage } from './messages.js'; // Importa para exibir mensagens
 import { showConfirmationModal } from './pages.js'; // Importa o modal de confirmação
 import { updateConnectionIndicator } from '../main.js'; // Importa updateConnectionIndicator
+import { resetUser, getCurrentUser } from '../firebase/auth.js'; // Importa funções para resetar usuário
+
+console.log("[config-ui.js] Arquivo carregado"); // <-- Adicione isso no topo do arquivo
 
 // Nomes padrão para os times personalizados
 const defaultTeamNames = [
@@ -52,6 +55,9 @@ export function loadConfig() {
             config[colorKey] = config[colorKey] ?? defaultTeamColors[i] ?? `#${Math.floor(Math.random()*16777215).toString(16)}`;
         }
 
+        // NOVO: Carrega a chave admin se existir
+        config.adminKey = config.adminKey || "";
+
         // Se for uma nova configuração, salva no localStorage
         if (isNewConfig) {
             localStorage.setItem('volleyballConfig', JSON.stringify(config));
@@ -76,12 +82,15 @@ export function loadConfig() {
             if (Elements.customTeamInputs[i].color()) Elements.customTeamInputs[i].color().value = config[`customTeam${teamNum}Color`];
         }
 
+        // NOVO: Aplica o valor ao input da chave admin
+        if (Elements.adminKeyInput()) Elements.adminKeyInput().value = config.adminKey;
+
         // Aplica o tema escuro
         document.body.classList.toggle('dark-mode', config.darkMode ?? true);
 
         // console.log("[config-ui.js] Configurações carregadas/processadas (incluindo padrões):", config); // Removido console.log excessivo
 
-        return config; // O objeto config retornado agora inclui os padrões se não estiverem salvos
+        return config; // O objeto config retornado agora inclui os padrões se não estiver salvos
     } catch (e) {
         console.error('Erro ao carregar configurações do localStorage:', e);
         return {};
@@ -102,6 +111,7 @@ export function saveConfig() {
             displayPlayers: Elements.displayPlayersToggle() ? Elements.displayPlayersToggle().checked : true,
             // NOVO: Salva o estado do toggle de status de conexão
             showConnectionStatus: Elements.showConnectionStatusToggle() ? Elements.showConnectionStatusToggle().checked : true,
+            adminKey: Elements.adminKeyInput() ? Elements.adminKeyInput().value.trim() : "",
         };
 
         // Salva nomes e cores personalizados
@@ -192,6 +202,59 @@ async function resetAppAndClearCache() {
 }
 
 /**
+ * Adiciona um botão de 'Resetar Usuário' na tela de configurações.
+ */
+export function addResetUserButton() {
+    try {
+        const currentUser = getCurrentUser();
+        if (!currentUser || currentUser.isAnonymous) {
+            // Usuário não está logado ou é anônimo. Não mostra o botão.
+            // console.log("Usuário não está logado ou é anônimo. Botão de reset não será adicionado.");
+            return;
+        }
+
+        // Sempre tenta pegar o botão do DOM
+        const resetButton = document.getElementById('reset-user-button');
+        if (!resetButton) {
+            console.error("[ResetUser] Botão de reset não encontrado no DOM.");
+            return;
+        }
+
+        // Remove listeners antigos para evitar múltiplos binds
+        resetButton.replaceWith(resetButton.cloneNode(true));
+        const freshResetButton = document.getElementById('reset-user-button');
+
+        freshResetButton.addEventListener('click', () => {
+            console.log("[ResetUser] Botão clicado");
+            if (!navigator.onLine) {
+                displayMessage("Você precisa estar online para resetar seus dados.", "error");
+                return;
+            }
+
+            showConfirmationModal(
+                "Tem certeza que deseja redefinir seus dados de usuário? Isso irá excluir todos os seus dados e desconectá-lo.",
+                async () => {
+                    console.log("[ResetUser] Confirmado no modal");
+                    try {
+                        freshResetButton.disabled = true;
+                        await resetUser();
+                        console.log("[ResetUser] resetUser() chamado com sucesso");
+                    } catch (error) {
+                        console.error("Erro ao resetar dados do usuário:", error);
+                        displayMessage("Erro ao resetar os dados do usuário. Por favor, tente novamente.", "error");
+                    } finally {
+                        freshResetButton.disabled = false;
+                    }
+                }
+            );
+        });
+    } catch (error) {
+        console.error("Erro ao adicionar botão de reset:", error);
+        displayMessage("Erro ao adicionar botão de reset. Por favor, recarregue a página.", "error");
+    }
+}
+
+/**
  * Configura os event listeners para os inputs de configuração.
  */
 export function setupConfigUI() {
@@ -203,7 +266,7 @@ export function setupConfigUI() {
     const elementsToSetup = [
         { getter: Elements.playersPerTeamInput, name: 'playersPerTeamInput' },
         { getter: Elements.pointsPerSetInput, name: 'pointsPerSetInput' },
-        { getter: Elements.pointsPerSetInput, name: 'pointsPerSetInput' }, // This line was duplicated in the original. Keeping it.
+        { getter: Elements.pointsPerSetInput, name: 'pointsPerSetInput' }, // Esta linha estava duplicada no original. Mantendo-a.
         { getter: Elements.numberOfSetsInput, name: 'numberOfSetsInput' },
         { getter: Elements.darkModeToggle, name: 'darkModeToggle' },
         { getter: Elements.vibrationToggle, name: 'vibrationToggle' },
@@ -270,6 +333,54 @@ export function setupConfigUI() {
     if (Elements.resetAppButton()) {
         Elements.resetAppButton().addEventListener('click', resetAppAndClearCache);
     }
+
+    // Configura input da chave admin
+    const adminKeyInput = document.getElementById('admin-key-input');
+    if (adminKeyInput) {
+        // Define o tipo do input como 'password' para ocultar a chave
+        adminKeyInput.type = 'password';
+
+        // Carrega valor existente se houver
+        const config = loadConfig();
+        if (config.adminKey) {
+            adminKeyInput.value = config.adminKey;
+        }
+
+        // Remove botão existente antes de adicionar um novo
+        const existingButton = document.getElementById('authenticate-button');
+        if (existingButton) {
+            existingButton.remove();
+        }
+
+        // Adiciona botão para autenticar
+        const authenticateButton = document.createElement('button');
+        authenticateButton.id = 'authenticate-button';
+        authenticateButton.textContent = 'Autenticar';
+        authenticateButton.style.marginTop = '5px';
+        adminKeyInput.parentNode.insertBefore(authenticateButton, adminKeyInput.nextSibling);
+
+        authenticateButton.addEventListener('click', () => {
+            const config = JSON.parse(localStorage.getItem('volleyballConfig')) || {};
+            config.adminKey = adminKeyInput.value;
+            localStorage.setItem('volleyballConfig', JSON.stringify(config));
+
+            // Corrige validação da chave
+            const correctAdminKey = 'admin998939';
+            if (config.adminKey === correctAdminKey) {
+                displayMessage('Chave autenticada', 'success');
+                
+                // Recarrega a página automaticamente apenas se a chave for válida
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000); // Pequeno atraso para exibir a mensagem antes de recarregar
+            } else {
+                displayMessage('Chave inválida', 'error');
+            }
+        });
+    }
+
+    addResetUserButton(); // Adiciona o botão de resetar usuário
+    console.log("Botão de resetar usuário adicionado às configurações.");
 
     console.log("[config-ui.js] setupConfigUI finalizado.");
 }

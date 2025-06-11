@@ -2,7 +2,7 @@
 // Contém a configuração e inicialização do Firebase.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; // Importe getAuth e updateProfile
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 let app;
@@ -54,6 +54,16 @@ export async function initFirebaseApp() {
     auth = getAuth(app);
 
     console.log("Firebase App inicializado.");
+
+    // --- ADICIONADO PARA TESTE NO CONSOLE ---
+    // Estas variáveis agora estarão acessíveis no console do navegador (apenas para desenvolvimento/depuração)
+    window.firebaseApp = app;
+    window.firebaseAuth = auth;
+    window.firebaseFirestore = db;
+    window.firebaseUpdateProfile = updateProfile; // Expondo a função updateProfile para acesso direto
+    window.initFirebaseApp = initFirebaseApp; // Expondo a função de inicialização para o console
+    // ----------------------------------------
+
     return { app, db, auth }; // Retorna as instâncias
 }
 
@@ -63,6 +73,10 @@ export async function initFirebaseApp() {
  */
 export function getAppId() {
     return appId;
+}
+
+export function getFirestoreDb() {
+    return db;
 }
 
 // REMOVIDO: getFirestoreDb() e getFirebaseAuth() não são mais necessários
